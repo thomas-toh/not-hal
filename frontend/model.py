@@ -15,7 +15,7 @@ class OverlayModel(QObject):
     every binding per message is far cheaper than per-field plumbing."""
 
     changed = Signal()
-    # D24: the user dismissed the island (Esc). A one-shot signal rather than a property,
+    # The user dismissed the island (Esc). A one-shot signal rather than a property,
     # because it is an EVENT — the island hides itself on it and the daemon is told separately.
     dismissed = Signal()
 
@@ -27,7 +27,7 @@ class OverlayModel(QObject):
 
     def feed_lost(self) -> None:
         """The daemon went away. Show nothing rather than a frozen last frame — `idle` alone
-        cannot say this any more, since an answer now deliberately outlives it (D24)."""
+        cannot say this any more, since an answer now deliberately outlives it."""
         self._s.clear_turn()
         self._s.state = "idle"
         self._s.mic = 0.0
@@ -90,22 +90,22 @@ class OverlayModel(QObject):
 
     @Property(bool, notify=changed)
     def done(self) -> bool:
-        """The reply is complete (response done). Drives the peek's 'generating…' cue (D27)."""
+        """The reply is complete (response done). Drives the peek's 'generating…' cue."""
         return self._s.done
 
     @Property(str, notify=changed)
     def model(self) -> str:
-        """The model that produced the reply — the peek footer names it (D34)."""
+        """The model that produced the reply — the peek footer names it."""
         return self._s.model
 
     @Property(int, notify=changed)
     def tokens(self) -> int:
-        """The turn's total input+output tokens — shown beside the model in the peek footer (D34)."""
+        """The turn's total input+output tokens — shown beside the model in the peek footer."""
         return self._s.tokens
 
     @Property(str, notify=changed)
     def dwell(self) -> str:
-        """"quick" if this turn ACTED, "slow" if it answered (D43). The island turns the word
+        """"quick" if this turn ACTED, "slow" if it answered. The island turns the word
         into seconds using the user's own setting — the daemon never names a duration."""
         return self._s.dwell
 
@@ -115,10 +115,10 @@ class OverlayModel(QObject):
 
     @Property(str, notify=changed)
     def tool(self) -> str:
-        """The Contract-T tool running right now, named for a person, or "" between calls (D38).
+        """The Contract-T tool running right now, named for a person, or "" between calls.
         NOTHING RENDERS THIS YET — the island's treatment of it is the design pass owed on the
-        tool-activity indicator (STATE, Track T). The seam is here so that pass is a QML change
-        and nothing else."""
+        tool-activity indicator. The seam is here so that pass is a QML change and nothing
+        else."""
         return self._s.tool
 
     @Property(str, notify=changed)
@@ -135,6 +135,6 @@ class OverlayModel(QObject):
 
     @Property(list, notify=changed)
     def history(self) -> list:
-        """Prior prompts this session, oldest first — for the expanded view (D22, which
-        superseded D14's ⌄ caret). No consumer yet; RAM only, never written to disk."""
+        """Prior prompts this session, oldest first — for the expanded view. No consumer yet;
+        RAM only, never written to disk."""
         return self._s.history

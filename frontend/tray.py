@@ -1,12 +1,12 @@
-"""System tray (Track P C3) — the only "not-hal is running" signal there is.
+"""System tray: the only sign that the app is running.
 
-The island hides completely at idle (spec/40: "gone = asleep"), so without this you cannot
-tell the overlay from a dead process. Since D29 it is also the door to the settings window:
+The island hides completely at idle (gone means asleep), so without this you cannot
+tell the overlay from a dead process. It is also the door to the settings window:
 the output toggles and the Groq key that used to live in this menu as a stopgap now have a
 real home, so the menu is back to three items.
 
 The icon is a mic-level ring — hollow while the mic is closed, a coral core with a halo that
-tracks your voice while it is open. Al the mascot briefly lived here (D32); it moved off when
+tracks your voice while it is open. Al the mascot briefly lived here; it moved off when
 the kit went to v2, and the tray gets its own character later.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 log = logging.getLogger("nothal.teleprompter")
 
 # Windows 11 Fluent flyout colours — the SHELL's, not the app's. A tray menu is part of the
-# desktop, so it follows the Windows light/dark setting and ignores not-hal's own palette
+# desktop, so it follows the Windows light/dark setting and ignores the app's own palette
 # entirely. Nothing here is duplicated from Theme.qml, because none of it should match.
 MENU_COLOURS = {
     #                 background  text       border     hover                   separator
@@ -155,7 +155,7 @@ def mic_icon(level: float, capturing: bool, light_taskbar: bool, px: int = 64) -
     """A level ring, the way a call app draws one: a hollow ink circle while the mic is CLOSED,
     a filled coral core the moment it opens, and a halo that pushes outward with your voice.
 
-    Truthful by construction (spec/50 rule 4): `capturing` is the daemon's real capture state and
+    Truthful by construction: `capturing` is the daemon's real capture state and
     `level` its real RMS — nothing here is inferred or faked while the mic is shut."""
     pm = QPixmap(px, px)
     pm.fill(Qt.GlobalColor.transparent)
@@ -192,7 +192,7 @@ class Tray(QSystemTrayIcon):
         self._model = model
         self.setToolTip("Teleprompter")
 
-        # The mic ring, driven by the live status feed (spec/50 rule 4 — the tray shows only what
+        # The mic ring, driven by the live status feed (the tray shows only what
         # the daemon is really doing, never inferred). No timer: mic frames ARE the clock.
         self._light = windows_taskbar_is_light()
         self._shown = None                        # last (capturing, level bucket) painted
@@ -244,7 +244,7 @@ class Tray(QSystemTrayIcon):
         self._restyle()                          # the tick follows immediately
 
     def _restyle(self) -> None:
-        """Colours and icons, both taken from the Windows theme rather than not-hal's."""
+        """Colours and icons, both taken from the Windows theme rather than the app's."""
         light = windows_uses_light_theme()
         ink = MENU_COLOURS["light" if light else "dark"][1]
         self._menu.setStyleSheet(menu_qss(light))
@@ -257,7 +257,7 @@ class Tray(QSystemTrayIcon):
         self._act_quit.setIcon(glyph_icon(POWER, ink))
         style_menu_native(self._menu, light)
 
-    # --- the mic ring (spec/50 rule 4: the tray reflects real status, never inferred) ---------
+    # --- the mic ring (the tray reflects real status, never inferred) -------------------------
 
     def _on_model(self) -> None:
         """`changed` fires on every feed message. Repaint only when the drawn picture would
@@ -294,7 +294,7 @@ def _selfcheck() -> None:
     closed, quiet, loud = (mic_icon(0.0, False, False), mic_icon(0.0, True, False),
                            mic_icon(1.0, True, False))
     assert all(not i.isNull() for i in (closed, quiet, loud))
-    # Closed reads as ink, open reads as coral: the honest difference (spec/50 rule 4).
+    # Closed reads as ink, open reads as coral: the honest difference.
     assert coral(closed) == 0, "the closed ring must not be coral"
     assert coral(quiet) > 0, "an open mic must show the coral core"
     # ...and louder is a bigger picture, which is the whole point of the ring.

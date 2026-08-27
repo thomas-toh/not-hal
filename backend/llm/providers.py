@@ -1,6 +1,6 @@
 """The provider catalogue — one lookup layer shared by every adapter and by the settings window.
 
-The catalogue itself is `shared/schemas/settings.json` -> `providers` (hard rule 3): which
+The catalogue itself is `shared/schemas/settings.json` -> `providers`: which
 providers exist, where each runs, how it authenticates, which credential-store entry holds its
 key, which env var stands in for that key, **which wire protocol serves it** (`wire`) and its
 API base URL (`api`). Nothing here restates any of it — this module only reads it.
@@ -12,7 +12,7 @@ Two wires cover all eleven providers:
                Mistral, OpenRouter and Google's compat layer in the cloud; Ollama, LM Studio
                and llama.cpp locally, which all expose an OpenAI-compatible `/v1`.
 
-Deliberately NOT here: choosing which provider to use. That is the router (spec/20 §Routing),
+Deliberately NOT here: choosing which provider to use. That is the router,
 which is still unbuilt and out of scope — this module answers "how do I reach X", never
 "should I use X".
 """
@@ -51,9 +51,9 @@ def wire(pid: str) -> str:
 
 
 def wire_names(pid: str) -> dict[str, str | None]:
-    """What THIS provider calls each of not-hal's request knobs (D44, hard rule 3).
+    """What THIS provider calls each of the app's request knobs.
 
-    not-hal names a knob once — `max_output_tokens`, `effort`, `temperature` — and the catalogue
+    The app names a knob once — `max_output_tokens`, `effort`, `temperature` — and the catalogue
     says how it is spelled on the way out. The wire supplies the default (it belongs to the
     protocol, not to any one provider) and the card overrides only what it spells differently,
     so ten providers sharing a dialect share one entry and the odd one out is a two-line card
@@ -134,7 +134,7 @@ def ensure_local_server(pid: str, endpoint: str | None = None,
 
     Returns True only if WE started it — the caller needs that to know what it may stop later.
 
-    The argv comes from the card's `serve` (hard rule 3), so no adapter knows a binary name and a
+    The argv comes from the card's `serve`, so no adapter knows a binary name and a
     provider that declares none is simply never started. Windows gets CREATE_NO_WINDOW: the point
     of the exercise is a server with no console and no tray (`ollama app.exe` is the tray,
     `ollama.exe serve` is the server).
@@ -197,7 +197,7 @@ def stop_local_servers() -> None:
 
 
 def credential_for(pid: str) -> str | None:
-    """A provider's API key: OS credential store first (spec/50 rule 10, service 'not-hal'),
+    """A provider's API key: OS credential store first (service 'not-hal'),
     then the env var the card names.
 
     Both names come from the catalogue — the account name from `credential` and the fallback
@@ -225,7 +225,7 @@ def _chat_only(ids: list[str]) -> list[str]:
 
     `GET /models` returns everything an account can reach, which includes speech-to-text,
     text-to-speech, embeddings, image models and safety classifiers — 15 ids for Groq, 129 for
-    OpenAI (measured 2026-07-24). The substrings come from the schema's `not_chat` (hard rule 3)
+    OpenAI (measured 2026-07-24). The substrings come from the schema's `not_chat`
     and are matched conservatively: anything ambiguous stays in the list, because hiding a model
     the user wanted is worse than showing one they don't.
     """
@@ -299,7 +299,7 @@ def probe(
 
 def _probe_status(exc: Exception) -> str:
     """Classify a failed probe by exception TYPE and status code, never message prose — the same
-    rule the adapters map errors by (B-02). Both SDKs sit on httpx, so one ladder covers them."""
+    rule the adapters map errors by. Both SDKs sit on httpx, so one ladder covers them."""
     import httpx
 
     status = getattr(exc, "status_code", None)
@@ -331,14 +331,14 @@ def build_model(provider: str, model: str | None = None, endpoint: str | None = 
     declare temperature today).
 
     This is adapter CONSTRUCTION, not routing: it builds the model you name. Deciding *which*
-    provider to use — the primary, per-role selection — is spec/20's router (`router.py`).
+    provider to use — the primary, per-role selection — is the router (`router.py`).
     Imports are local to dodge the providers <-> adapters import cycle (both adapters import from
     this module at load time).
     """
     if wire(provider) == "anthropic":
         from .claude import ClaudeModel
 
-        # ponytail: Claude's effort/extended-thinking are not wired into B1 yet (M0.5 persona/output
+        # ponytail: Claude's effort/extended-thinking are not wired into B1 yet (persona/output
         # work), and Anthropic declares no temperature capability; both are ignored here rather than
         # faked. B2 below honours them.
         return ClaudeModel(model=model)

@@ -6,7 +6,7 @@ import logging
 import logging.handlers
 from pathlib import Path
 
-# One directory, so spec/50's "user-purgeable in one action" is literally one delete.
+# One directory, so "user-purgeable in one action" is literally one delete.
 # Transcripts and replies reach the log through the orchestrator's turn events, which is
 # why this is a privacy-relevant location and not just a debugging convenience.
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"

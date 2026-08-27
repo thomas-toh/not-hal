@@ -1,12 +1,12 @@
-"""Track G step ② (STATE): the two doors (D20) — global hotkeys for **ask** and **dictate**.
+"""Global hotkeys for **ask** and **dictate**, the two doors into a turn.
 
-Each door is hybrid (spec/40): **tap** opens a capture and a second tap closes it;
+Each door is hybrid: **tap** opens a capture and a second tap closes it;
 **hold ≥ HOLD_S** is push-to-talk and the release closes it. The key is the endpoint —
 the assistant's 1 s VAD silence cut does not end a keyed turn (see `capture_over` in
 backend/orchestrator.py, and `auto_end` for the config-adjustable alternative).
 
-**Why the narrow Win32 API and not a keyboard hook (spec/50).** The obvious library
-(`pynput`) installs a system-wide low-level keyboard hook — not-hal's process would then
+**Why the narrow Win32 API and not a keyboard hook.** The obvious library
+(`pynput`) installs a system-wide low-level keyboard hook — this app's process would then
 see *every* keystroke on the machine. `RegisterHotKey` instead asks the OS to deliver
 only the specific combos we registered: no keystream, nothing else observed, and the
 combo is consumed so other apps never see it either. `GetAsyncKeyState` is a query, not
@@ -34,7 +34,7 @@ from shared.log import setup_logging
 
 log = logging.getLogger("nothal.hotkeys")
 
-HOLD_S = 0.5        # spec/40: held this long -> push-to-talk, release is the endpoint
+HOLD_S = 0.5        # held this long -> push-to-talk, release is the endpoint
 POLL_S = 0.025      # key-release poll; 25 ms is well inside the 300 ms press->indication target
 SYNC_S = 0.1        # how often the pump re-reads the bindings and the pause lease. Short because
                     # it bounds the gap between clicking Record and the doors letting go: one
@@ -44,7 +44,7 @@ SYNC_S = 0.1        # how often the pump re-reads the bindings and the pause lea
 # stay as the headless escape hatch (`python -m backend.hotkeys`, CI), but they are BENEATH the
 # setting: an env var left over in a shell used to outrank the settings window silently, which is
 # the same written-but-unread failure the picker had.
-# DISMISS IS NOT HERE (D24). Esc is a bare key, so a standing registration would consume it
+# DISMISS IS NOT HERE. Esc is a bare key, so a standing registration would consume it
 # machine-wide; it used to be a "transient" door this module armed and disarmed in step with
 # the daemon's idea of what was on screen. The Teleprompter now owns Esc outright, because it
 # is the thing on screen and therefore the only party that knows — which deleted the arming
@@ -54,7 +54,7 @@ DEFAULT_BINDINGS = {
     "dictate": os.environ.get("NOTHAL_HOTKEY_DICTATE", "ctrl+alt+2"),
 }
 
-# Which setting names each door's combo (spec/70). The schema holds the shipped default, so a
+# Which setting names each door's combo. The schema holds the shipped default, so a
 # fresh profile already reads "ctrl+alt+1" from here rather than from the dict above.
 _SETTING = {"ask": "hotkey_ask", "dictate": "hotkey_dictate"}
 
@@ -68,7 +68,7 @@ PAUSE_LEASE_S = 30.0
 
 
 def bindings(now: dict | None = None) -> dict[str, str]:
-    """The combo for each door, read FRESH from the user's settings (spec/70).
+    """The combo for each door, read FRESH from the user's settings.
 
     A blank setting falls through to `DEFAULT_BINDINGS`, and so does one that will not parse — a
     hand-edited file must not leave the daemon with no way in. Read fresh so the pump can pick up
@@ -172,12 +172,12 @@ class Door:
         closing tap — it fired `end`, opened nothing, and the user had to press twice to
         get going again. Called from _capture()'s finally, so no exit path can skip it.
 
-        ponytail: KNOWN RACE (G-06, accepted). This clears `start` unconditionally from the
+        ponytail: KNOWN RACE, accepted. This clears `start` unconditionally from the
         orchestrator thread. A press that lands in the sliver between the capture's real end
         and this `finally` running is recorded by `_fire` (`start.set()`) on the pump thread
         and then erased here — one silently lost press. The window is ~ms and self-heals (press
-        again), so it is accepted. The real fix is not local to `close()`: it is the Door
-        redesign parked in STATE (mechanism vs policy — see there), so noted, not patched."""
+        again), so it is accepted. The real fix is not local to `close()`: it needs the Door
+        redesign (parked) that separates mechanism from policy, so it is recorded here rather than patched."""
         self.open = False
         self.start.clear()
         self.end.clear()
@@ -199,9 +199,9 @@ class Hotkeys:
         that ends on release — like hold-to-crouch vs tap-to-toggle-crouch in a game.
 
         ponytail: watching for the release busy-polls the message-pump thread, so while ONE
-        door is held the OTHER door (dictate vs ask) is deaf until release. Accepted (G-05):
-        you don't dictate and ask in the same instant, there is only ever one turn, and D24
-        already moved the one key that mattered here (Esc) off this thread to the overlay. The
+        door is held the OTHER door (dictate vs ask) is deaf until release. Accepted:
+        you don't dictate and ask in the same instant, there is only ever one turn, and the one
+        key that mattered here (Esc) has already moved off this thread to the overlay. The
         real fix — watch the release off the pump thread (a GetAsyncKeyState poll, or fold it
         into the orchestrator's loop) — is worth it only if a third door lands or simultaneous
         doors ever matter."""
@@ -351,7 +351,7 @@ def _selfcheck() -> None:
     hk._fire(door)
     assert door.start.is_set() and not door.end.is_set()
 
-    # D24: no door here may be modifier-less, with no exemption. Esc was the one exception —
+    # No door here may be modifier-less, with no exemption. Esc was the one exception —
     # a "transient" door armed and disarmed against the daemon's guess at what was on screen.
     # The Teleprompter owns Esc now (it is the thing on screen), so a bare binding in THIS
     # module can only mean a key consumed machine-wide for the life of the daemon.
@@ -362,7 +362,7 @@ def _selfcheck() -> None:
             pass
         else:
             raise AssertionError(f"{bare!r} must not parse: a bare combo is swallowed globally")
-    assert "dismiss" not in DEFAULT_BINDINGS, "dismissal belongs to the overlay (D24)"
+    assert "dismiss" not in DEFAULT_BINDINGS, "dismissal belongs to the overlay"
 
     # A capture that ends WITHOUT a second press (dismiss · no-speech give-up · 30 s cap ·
     # auto_end) must not leave the door half-open, or the next press reads as the closing
@@ -383,7 +383,7 @@ def _selfcheck() -> None:
     hk3.reset()                                    # abandon (dismiss) clears every door
     assert not d.open and not d.start.is_set() and not d.end.is_set()
 
-    # --- bindings come from the SETTINGS (spec/70), which is what makes the recorder bite.
+    # --- bindings come from the SETTINGS, which is what makes the recorder bite.
     # They were read from the env and a literal, so rebinding in the window changed nothing.
     import tempfile
     from pathlib import Path
@@ -433,7 +433,7 @@ def _selfcheck() -> None:
 
 def main() -> None:
     setup_logging()
-    ap = argparse.ArgumentParser(description="not-hal hotkeys — the two doors (D20)")
+    ap = argparse.ArgumentParser(description="Register and test the ask and dictate hotkeys")
     ap.add_argument("--selfcheck", action="store_true",
                     help="verify parsing and the tap/hold machine without a keyboard, then exit")
     args = ap.parse_args()

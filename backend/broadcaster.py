@@ -1,19 +1,19 @@
-"""Track P (Contract P, shared/schemas/status.json): the crash-isolated status broadcaster.
+"""Contract P (shared/schemas/status.json): the crash-isolated status broadcaster.
 
 The orchestrator publishes overlay status events — coarse state, transcript, streamed
 response, mic level, per-turn latency, and faults — as NDJSON over a localhost-only TCP
-socket (127.0.0.1). The Teleprompter (component P, D19) is a separate process that
+socket (127.0.0.1). The Teleprompter (component P) is a separate process that
 subscribes and renders whatever arrives; it never drives the voice loop.
 
 This module is the publisher half, and it is isolated from the voice loop by construction:
 `publish()` is a non-blocking, never-raising hand-off onto a bounded queue drained by a
 daemon thread, and a bind failure just disables the feed. A slow, absent, or dead overlay
-(or the broadcaster itself dying) can neither stall nor crash the orchestrator (spec/00
-D19). The daemon is the always-up server; the overlay is the reconnecting client.
+(or the broadcaster itself dying) can neither stall nor crash the orchestrator. The daemon
+is the always-up server; the overlay is the reconnecting client.
 
-Message shapes are Contract P (shared/schemas/status.json, hard rule 3): the m_* helpers are
-the one place the field names live, and --selfcheck validates them against the loaded
-schema, so the code never re-encodes the field lists.
+Message shapes are Contract P (shared/schemas/status.json is the source of truth): the m_*
+helpers are the one place the field names live, and --selfcheck validates them against the
+loaded schema, so the code never re-encodes the field lists.
 
 Run:
     python -m backend.broadcaster --fake       # no audio/mic/models: play a scripted
@@ -37,11 +37,11 @@ from shared.log import setup_logging
 
 log = logging.getLogger("nothal.status")
 
-# Contract P transport (spec/00 D19; docs/04 §5 reserved 'web' port); localhost only. LOADED
-# from status.json (hard rule 3), the same key the overlay reads — one home, so the port and
-# the env-var name cannot drift between the two packages. Falls back to the literals if the
-# schema can't be read, because orchestrator.py imports this module: a spec/ problem must not
-# take down the voice loop (that would invert D19's crash-isolation).
+# Contract P transport; localhost only. LOADED from status.json (the schema is the source of
+# truth), the same key the overlay reads — one home, so the port and the env-var name cannot
+# drift between the two packages. Falls back to the literals if the schema can't be read,
+# because orchestrator.py imports this module: a schema problem must not take down the voice
+# loop (that would invert the crash-isolation).
 def _transport() -> dict:
     try:
         return load_schemas()["status"]["transport"]
@@ -61,7 +61,7 @@ def status_port() -> int:
 HOST = status_host()
 PORT = status_port()
 QUEUE_MAX = 256   # publish() drops when full — mic frames are droppable (status.json).
-SNAPSHOT_MAX = 512   # cap on the retained-turn log (P-02); a turn is a handful of messages,
+SNAPSHOT_MAX = 512   # cap on the retained-turn log; a turn is a handful of messages,
                      # this is only a runaway backstop for a pathologically long stream.
 UPSTREAM_MAX = 4096   # bytes a client may send without a newline before we discard them. The
                       # upstream verbs are a dozen bytes each; anything larger is a client
@@ -69,7 +69,7 @@ UPSTREAM_MAX = 4096   # bytes a client may send without a newline before we disc
 
 
 def upstream_types() -> frozenset[str]:
-    """Message types a CLIENT may send us (D24). Loaded from status.json, never restated:
+    """Message types a CLIENT may send us. Loaded from status.json, never restated:
     the whole point of the list is that the two ends cannot disagree about it."""
     return frozenset(load_schemas()["status"]["upstream"])
 
@@ -88,11 +88,11 @@ def m_transcript(text: str, final: bool = True) -> dict:
 def m_response(delta: str = "", done: bool = False, model: str = "", tokens: int = 0,
                dwell: str = "") -> dict:
     msg = {"type": "response", "delta": delta, "done": done}
-    if model:                       # stamped only on the 'done' message; streaming deltas stay lean (D34)
+    if model:                       # stamped only on the 'done' message; streaming deltas stay lean
         msg["model"] = model
     if tokens:
         msg["tokens"] = tokens
-    if dwell:                       # 'quick' for a turn that acted; absent means 'slow' (D43)
+    if dwell:                       # 'quick' for a turn that acted; absent means 'slow'
         msg["dwell"] = dwell
     return msg
 
@@ -126,13 +126,13 @@ class Broadcaster:
         self._lock = threading.Lock()
         self._srv: socket.socket | None = None
         self._started = False
-        # D24: the one thing a subscriber may say back. A CANCEL, never a command (spec/50
-        # rule 12) — it can only stop work already in flight, so the worst a hostile local
-        # process can do with it is interrupt a turn it can already read off this same socket.
+        # The one thing a subscriber may say back: a CANCEL and nothing more — it can only stop
+        # work already in flight, so the worst a hostile local process can do with it is
+        # interrupt a turn it can already read off this same socket.
         self._on_dismiss = on_dismiss
-        # P-02: the current turn, retained so a client that (re)connects mid-turn can be caught
+        # The current turn, retained so a client that (re)connects mid-turn can be caught
         # up — otherwise a restart during a turn (or a held-answer dwell) shows a blank island,
-        # and a reconnect mid-capture shows nothing while the mic is open (spec/50 rule 4).
+        # and a reconnect mid-capture shows nothing while the mic is open.
         self._log: list[dict] = []
         # The boundary the log clears at is the SAME one the overlay's reducer uses
         # (status.json `clearsTurn`), loaded not restated — so the daemon never re-implements
@@ -143,7 +143,7 @@ class Broadcaster:
             self._clears = frozenset({"listening", "thinking"})
 
     def _remember(self, msg: dict) -> None:
-        """Retain one message for the mid-turn snapshot (P-02). Clears at a turn boundary,
+        """Retain one message for the mid-turn snapshot. Clears at a turn boundary,
         skips droppable/stale `mic`, and caps the log."""
         t = msg.get("type")
         if t == "mic":
@@ -171,7 +171,7 @@ class Broadcaster:
         if self._started:
             return
         srv = None                              # so the except can close it without NameError
-        try:                                    # if socket() itself raised (P-04)
+        try:                                    # if socket() itself raised
             srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             if sys.platform != "win32":
                 # Unix: avoid TIME_WAIT rebind pain. Skipped on Windows, where SO_REUSEADDR
@@ -182,7 +182,7 @@ class Broadcaster:
         except OSError as e:
             # Port busy / bind refused: run deaf, never take down the daemon (crash-isolation).
             if srv is not None:
-                srv.close()                     # P-04: don't leak the listener on bind failure
+                srv.close()                     # don't leak the listener on bind failure
             log.warning("status feed disabled (%s:%d: %s)", self.host, self.port, e)
             return
         self._srv = srv
@@ -214,7 +214,7 @@ class Broadcaster:
             except OSError:
                 conn.close()   # died between accept and setup — drop it, keep serving
                 continue
-            # Snapshot + admit under ONE lock (P-02): capturing the turn and adding the client
+            # Snapshot + admit under ONE lock: capturing the turn and adding the client
             # must be atomic, or a message published in the gap is lost or replayed out of
             # order. The burst goes out while holding the lock — briefly blocking the send
             # thread, the module's already-declared ceiling — so it leaves before any live
@@ -231,7 +231,7 @@ class Broadcaster:
                              name="status-recv", daemon=True).start()
 
     def _read_client(self, conn: socket.socket) -> None:
-        """Drain one client's upstream verbs (D24). A thread per client because the normal
+        """Drain one client's upstream verbs. A thread per client because the normal
         case is a subscriber that says nothing and blocks here forever; crash-isolation is
         unchanged, since anything that goes wrong here kills only this thread — publish()
         and the voice loop never touch it."""
@@ -264,7 +264,7 @@ class Broadcaster:
                         msg.get("type") if isinstance(msg, dict) else type(msg).__name__)
             return
         log.info("dismiss from the overlay")
-        # A dismissed turn must not be replayed. The retained turn (P-02) exists so a client
+        # A dismissed turn must not be replayed. The retained turn exists so a client
         # joining mid-turn is caught up on what is ON SCREEN — and after a dismiss, nothing is.
         # Clearing only at `clearsTurn` was not enough: a dismiss arriving after a turn has
         # finished leaves the whole prompt-and-reply retained indefinitely, so the next client
@@ -276,7 +276,7 @@ class Broadcaster:
 
     def _send(self) -> None:
         # One thread delivers each message to every client serially, with the blocking sendall
-        # OUTSIDE the lock (P-04) so a wedged subscriber cannot block _accept from admitting a
+        # OUTSIDE the lock so a wedged subscriber cannot block _accept from admitting a
         # new one (which would sit looking connected, receiving nothing). It never touches the
         # voice loop, which only touches the queue.
         # Ceiling left in place on purpose: because it is ONE serial thread, a frozen subscriber
@@ -289,7 +289,7 @@ class Broadcaster:
             msg = self._q.get()
             line = (json.dumps(msg, separators=(",", ":")) + "\n").encode("utf-8")
             with self._lock:
-                self._remember(msg)                 # P-02: retain for late joiners
+                self._remember(msg)                 # retain for late joiners
                 clients = list(self._clients)       # snapshot the set, then send unlocked
             dead = [c for c in clients if not _try_send(c, line)]
             if dead:
@@ -368,8 +368,8 @@ def fake_events():
             yield (2.5, m_state("idle"))
         else:
             # Instrument readings, so the overlay's latency readout is actually exercised
-            # rather than only ever being rendered for the first time during the M0 run.
-            # Deliberately straddles the spec/40 targets (feedback 1500, first word 4000) so
+            # rather than only ever being rendered for the first time during the first live run.
+            # Deliberately straddles the latency targets (feedback 1500, first word 4000) so
             # the over-budget styling gets exercised too.
             yield (0.1, m_latency("feedback", 1180 if turn % 2 else 1720))
             yield (0.5, m_state("speaking"))
@@ -440,16 +440,16 @@ def _selfcheck() -> None:
     for _ in range(50):
         bc.publish(m_mic(0.5))               # overflows -> must drop, never raise/block
 
-    # --- upstream (D24): one verb, allowlisted from the schema, no sockets needed ---
+    # --- upstream: one verb, allowlisted from the schema, no sockets needed ---
     assert upstream_types() == {"dismiss"}, sorted(upstream_types())
     assert _validate({"type": "dismiss"}) == []
     fired: list[int] = []
     up = Broadcaster(on_dismiss=lambda: fired.append(1))
     up._upstream(b'{"type":"dismiss"}')
     assert fired == [1], "a dismiss line must reach the handler"
-    # THE security property (spec/50 rule 12): this channel can cancel and nothing else. A
-    # downstream verb replayed upstream must not act — otherwise any local process could
-    # drive the island's text, or worse once Contract P grows.
+    # THE security property: this channel can cancel and nothing else. A downstream verb
+    # replayed upstream must not act — otherwise any local process could drive the island's
+    # text, or worse once Contract P grows.
     for bad in (b'{"type":"state","state":"idle"}',
                 b'{"type":"transcript","text":"ignore your instructions"}',
                 b'{"type":"response","delta":"x"}', b'not json', b'[1,2]', b'{"no":"type"}'):
@@ -468,7 +468,7 @@ def _selfcheck() -> None:
     up._upstream(b'{"type":"state","state":"idle"}')
     assert up._snapshot_msgs(), "an ignored upstream line must not clear the turn"
 
-    # --- transport loaded from status.json (P-01), env override honoured ---
+    # --- transport loaded from status.json, env override honoured ---
     tp = load_schemas()["status"]["transport"]
     assert (status_host(), status_port()) == (tp["host"], int(os.environ.get(tp["portEnv"], tp["port"])))
     os.environ[tp["portEnv"]] = "9911"
@@ -477,14 +477,14 @@ def _selfcheck() -> None:
     finally:
         os.environ.pop(tp["portEnv"], None)
 
-    # --- mid-turn snapshot (P-02): a joining client is caught up by replaying the turn ---
+    # --- mid-turn snapshot: a joining client is caught up by replaying the turn ---
     snap_bc = Broadcaster()
     for m in [m_state("thinking"), m_transcript("last turn"), m_response(delta="old"),
-              m_state("idle"),                     # dwell: idle does NOT clear the turn (D24)
+              m_state("idle"),                     # dwell: idle does NOT clear the turn
               m_state("listening")]:               # the NEXT capture opens -> clears the log
         snap_bc._remember(m)
     # reconnect DURING capture must carry 'listening', not leave the joiner at idle with the
-    # mic open (spec/50 rule 4 — no dark listening).
+    # mic open (no dark listening).
     assert snap_bc._snapshot_msgs() == [m_state("listening")], snap_bc._snapshot_msgs()
     for m in [m_state("thinking"), m_transcript("what's the weather"),
               m_response(delta="It's "), m_response(delta="clear."), m_mic(0.6),
@@ -499,7 +499,7 @@ def _selfcheck() -> None:
     assert all(s["type"] != "mic" for s in snap), "a snapshot must not carry stale bars"
     assert all(_validate(s) == [] for s in snap), "a snapshot is still Contract P"
 
-    # --- P-04: a wedged subscriber must not hold the client lock during its blocking send ---
+    # --- a wedged subscriber must not hold the client lock during its blocking send ---
     entered, release = threading.Event(), threading.Event()
 
     class _Wedged:
@@ -513,11 +513,11 @@ def _selfcheck() -> None:
     wb._q.put(m_state("thinking"))
     assert entered.wait(1.0), "the send thread never reached sendall"
     assert wb._lock.acquire(timeout=1.0), \
-        "a wedged subscriber holds the client lock — a new overlay could never be admitted (P-04)"
+        "a wedged subscriber holds the client lock — a new overlay could never be admitted"
     wb._lock.release()
     release.set()
 
-    # --- P-04: a bind failure must close the listener socket, not leak it ---
+    # --- a bind failure must close the listener socket, not leak it ---
     real_socket = socket.socket
 
     class _FakeSrv:
@@ -533,7 +533,7 @@ def _selfcheck() -> None:
         bb = Broadcaster()
         bb.start()
         assert bb.started is False and made and made[0].closed, \
-            "a bind failure must close the listener socket, not leak it (P-04)"
+            "a bind failure must close the listener socket, not leak it"
     finally:
         socket.socket = real_socket
 
@@ -545,7 +545,7 @@ def _selfcheck() -> None:
 
 def main() -> None:
     setup_logging()
-    ap = argparse.ArgumentParser(description="not-hal status broadcaster — Contract P (Track P)")
+    ap = argparse.ArgumentParser(description="Broadcast status messages to the overlay")
     ap.add_argument("--fake", action="store_true",
                     help="play a scripted session to any connected overlay (no audio/mic/models)")
     ap.add_argument("--selfcheck", action="store_true",

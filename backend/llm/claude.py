@@ -1,7 +1,7 @@
-"""B1 — Anthropic Messages API adapter (Contract B, spec/20). Build step 5.
+"""B1: the Anthropic Messages API adapter (Contract B).
 
-Streams a Claude reply as ModelEvents. M0 runs zero tools (utterance in, streamed text
-out); the tool_use path is wired for M1 but unexercised until tools land.
+Streams a Claude reply as ModelEvents. The first build ran zero tools (utterance in, streamed text
+out); the tool_use path is wired for the tool loop.
 
     python -m backend.llm.claude "what time is it in Tokyo?"   # live console round-trip
     python -m backend.llm.claude --selfcheck                   # no network: error mapping
@@ -27,8 +27,8 @@ from .base import (
 )
 from .providers import credential_for
 
-# DEFAULT_SYSTEM and MAX_TOKENS moved to base.py when B2 arrived — they describe not-hal, not
-# Anthropic, and M0.5's versioned persona must have one place to replace. Imported above so this
+# DEFAULT_SYSTEM and MAX_TOKENS moved to base.py when B2 arrived — they describe the app, not
+# Anthropic, and a later versioned persona must have one place to replace. Imported above so this
 # module's own name for them still resolves.
 #
 # There is deliberately NO default model here. An adapter that silently defaulted to one Claude
@@ -38,7 +38,7 @@ from .providers import credential_for
 # orchestrator, where it belongs — a caller's choice, not the adapter's.
 
 # No `thinking` param: on Opus 4.8 that means thinking is OFF, which is what a <4 s
-# first-word voice reply wants (adaptive thinking delays the first token). spec/40.
+# first-word voice reply wants (adaptive thinking delays the first token).
 
 
 def _tools_for_api(tools: list[ToolSpec]) -> list[dict]:
@@ -46,10 +46,10 @@ def _tools_for_api(tools: list[ToolSpec]) -> list[dict]:
 
     The registry spells the JSON-schema key `parameters` (shared/schemas/tools.json) and carries a
     `tier`; Anthropic requires `input_schema` and rejects unknown fields. The list used to be
-    passed through VERBATIM, which was invisible only because M0 passes an empty one — the first
+    passed through VERBATIM, which was invisible only because the first build passed an empty one — the first
     real tool would have 400'd, and `_error_kind` maps a 400 to the generic apology, so it would
     have surfaced as an unexplained "sorry". Translation lives here for the same reason error
-    mapping does: it is this provider's wire format (spec/20).
+    mapping does: it is this provider's wire format.
     """
     return [
         {
@@ -62,8 +62,8 @@ def _tools_for_api(tools: list[ToolSpec]) -> list[dict]:
 
 
 def _error_kind(exc: Exception) -> str:
-    """Map an SDK exception to a shared Contract B Error kind (spec/20) by its TYPE and status
-    code — never by matching the message prose (B-02).
+    """Map an SDK exception to a shared Contract B Error kind by its TYPE and status
+    code — never by matching the message prose.
 
     No `context` case: a context overflow and any other malformed request are BOTH
     `BadRequestError` / `type == "invalid_request_error"` (verified, anthropic 0.116.0) — the
@@ -72,7 +72,7 @@ def _error_kind(exc: Exception) -> str:
     long"). A 400 therefore maps to `unknown` (the generic apology), which is what the API is
     actually telling us. Detecting context overflow *properly* means counting tokens against the
     model's window BEFORE the call — a proactive check, not an error heuristic — and that only
-    earns its keep once conversations persist across wakes (parked; STATE)."""
+    earns its keep once conversations persist across wakes (parked)."""
     import anthropic
 
     if isinstance(exc, anthropic.AuthenticationError):
@@ -98,8 +98,8 @@ class ClaudeModel:
         self._client = None          # built on first use, then kept — see _client_once()
 
     def _client_once(self):
-        """One client for this adapter's life, resting on Contract B's one-loop guarantee
-        (spec/20). It used to be rebuilt per turn, which cost two separate things on the
+        """One client for this adapter's life, resting on Contract B's one-loop guarantee.
+        It used to be rebuilt per turn, which cost two separate things on the
         end-of-speech -> first-word path: a fresh TCP+TLS handshake (unavoidable then, since
         an httpx pool belongs to the loop that made it and the loop died with the turn), and
         ~190 ms of plain CPU re-reading this machine's CA bundle. Only the second is fixed
@@ -136,7 +136,7 @@ class ClaudeModel:
             return
 
         client = self._client_once()
-        # An empty utterance is the tool-loop CONTINUE signal (spec/20): the new input — the
+        # An empty utterance is the tool-loop CONTINUE signal: the new input — the
         # tool_result message that record_tool_round wrote — is already in history, so add no user
         # turn. Two user messages in a row would break Anthropic's strict user/assistant alternation.
         messages = list(session.history)
@@ -158,7 +158,7 @@ class ClaudeModel:
                 async for text in stream.text_stream:
                     yield TextDelta(text)
                 final = await stream.get_final_message()
-            # Tool calls (M1): a turn either speaks or calls tools; surface them after
+            # Tool calls: a turn either speaks or calls tools; surface them after
             # the text so the orchestrator can execute through Contract T.
             for block in final.content:
                 if block.type == "tool_use":
@@ -176,8 +176,8 @@ class ClaudeModel:
     def record_tool_round(session: Session, assistant_text: str, calls, results: dict) -> None:
         """Append one completed tool round to `session.history` in Anthropic's wire shape, so the
         next converse round (driven with an empty utterance) sees the model's tool_use blocks and
-        their results. The orchestrator owns the loop and executes the tools through Contract T
-        (spec/20); this only SERIALISES, because the message shape IS this provider's wire format —
+        their results. The orchestrator owns the loop and executes the tools through Contract T;
+        this only SERIALISES, because the message shape IS this provider's wire format —
         the same reason tool translation and error mapping live in the adapter, not the caller.
 
         `results` maps a tool_use id -> its result string. Anthropic wants ONE assistant message
@@ -216,7 +216,7 @@ async def _run(question: str, model: str) -> int:
 
 
 def _selfcheck() -> None:
-    # Error mapping is by exception TYPE and status code, never message prose (B-02). Build real
+    # Error mapping is by exception TYPE and status code, never message prose. Build real
     # SDK exception instances via __new__ (isinstance passes; no httpx.Response to fake), set
     # only the status_code the ladder reads. A 400 maps to `unknown` — the generic apology —
     # because Anthropic collapses context-overflow and other bad requests into one type.
@@ -233,7 +233,7 @@ def _selfcheck() -> None:
     assert _error_kind(_exc(anthropic.APIConnectionError)) == "unavailable"
     assert _error_kind(_exc(anthropic.InternalServerError, 500)) == "unavailable"
     assert _error_kind(_exc(anthropic.BadRequestError, 400)) == "unknown", \
-        "a 400 must map to the generic apology — no prose-guessing at 'context' (B-02)"
+        "a 400 must map to the generic apology — no prose-guessing at 'context'"
     assert _error_kind(RuntimeError("boom")) == "unknown"
     assert DEFAULT_SYSTEM and "voice" in DEFAULT_SYSTEM.lower()
 
@@ -251,11 +251,11 @@ def _selfcheck() -> None:
             f"Anthropic rejects unknown tool fields, got {sorted(w)}"
         assert w["name"] == t["name"]
         assert w["input_schema"] == t["parameters"], "`parameters` must become `input_schema`"
-        assert "tier" not in w, "tier is not-hal's safety business and must not leave the machine"
+        assert "tier" not in w, "tier is the app's safety business and must not leave the machine"
     assert _tools_for_api([{"name": "bare"}])[0]["input_schema"] == \
         {"type": "object", "properties": {}}, "a tool with no parameters still needs a schema"
 
-    # Tool-loop threading (spec/20): a completed round serialises into history in Anthropic's wire
+    # Tool-loop threading: a completed round serialises into history in Anthropic's wire
     # shape — one assistant message interleaving text with tool_use, then one user message of
     # tool_result blocks — so the next round (empty utterance) reads the results without stacking
     # a second user turn.
@@ -274,7 +274,7 @@ def _selfcheck() -> None:
     assert s2.history[0]["content"] == [{"type": "tool_use", "id": "tu_2", "name": "x", "input": {}}]
     assert s2.history[1]["content"][0]["content"] == "", "a missing result serialises as empty"
 
-    # Client lifetime (spec/20 adapter lifetime). No network: every cost here is local CPU.
+    # Client lifetime. No network: every cost here is local CPU.
     import time
 
     assert ssl_context() is ssl_context(), "the CA bundle must be parsed once per process"
@@ -313,7 +313,7 @@ def main() -> None:
     # model is intrinsic here. The env var is the daemon's knob (orchestrator.DAEMON_MODEL) and is
     # honoured so `python -m backend.llm.claude "q"` matches what the daemon would run.
     cli_default = os.environ.get("NOTHAL_MODEL", "claude-opus-4-8")
-    ap = argparse.ArgumentParser(description="not-hal B1 Claude adapter (Track G step 5)")
+    ap = argparse.ArgumentParser(description="Talk to the Anthropic API directly")
     ap.add_argument("question", nargs="?", help="prompt to send to Claude")
     ap.add_argument("--model", default=cli_default, help=f"model id (default {cli_default})")
     ap.add_argument("--selfcheck", action="store_true", help="offline logic check, no network")

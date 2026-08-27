@@ -1,15 +1,14 @@
-// The settings window (spec/70, D29 — re-cut by D40) — the only surface besides the island the
-// user ever sees.
+// The settings window. Besides the island, it is the only surface the user ever sees.
 //
-// D40's brief: read as PART OF THE SYSTEM, not as an app with a look of its own. What that gave
+// The brief: read as PART OF THE SYSTEM, not as an app with a look of its own. What that gave
 // up, deliberately — the coded SEC.0n bands, the card rosters in scrolling bands, the three-way
 // top-bar nav, the cool-neutral field, and Martian Mono on every machine value. What it keeps:
 // every value, every default, and the `built: false` dimming rule.
 //
-// Still generated from `shared/schemas/settings.json` (hard rule 3): `cfg.panes` names the sidebar,
-// `cfg.rowsFor`/`rowsInGroup` its rows, `cfg.meta[key]` each row's label, help, type and whether
-// its consumer exists yet, `cfg.toolsFor` the tools behind a connector. Adding a knob is a JSON
-// edit. Palette and type live in Theme.qml.
+// Still generated from `shared/schemas/settings.json`, the source of truth: `cfg.panes` names the
+// sidebar, `cfg.rowsFor`/`rowsInGroup` its rows, `cfg.meta[key]` each row's label, help, type and
+// whether its consumer exists yet, `cfg.toolsFor` the tools behind a connector. Adding a knob is a
+// JSON edit. Palette and type live in Theme.qml.
 //
 // Controls are drawn here rather than taken from Quick Controls' styled set: restyling stock
 // controls to this austerity costs more than drawing a switch. Controls.Basic is imported for the
@@ -36,7 +35,7 @@ Window {
     // `startSystemResize` on the edges. The host asks DWM for rounded corners.
     flags: Qt.Window | Qt.FramelessWindowHint
 
-    // The visible page. A PANE id now (D40), not one of three hand-named sections — the sidebar is
+    // The visible page. A PANE id, not one of three hand-named sections — the sidebar is
     // generated from the schema, so the nav and this property share one vocabulary.
     property string section: "general"
     property bool manageOpen: false
@@ -45,12 +44,11 @@ Window {
     // Is a modal surface up? Every modal ORs into this ONE property, and the page below binds its
     // `enabled` to it — so the page cannot be scrolled, dragged or clicked out from under an open
     // sheet. A scrim that only swallows clicks does NOT cover this: Qt Quick's MouseArea has no
-    // wheel signal at all, so the wheel goes straight past it to the Flickable behind (Thomas,
-    // 2026-07-31). A disabled item receives no input of ANY kind — nothing a future input type can
-    // slip through.
+    // wheel signal at all, so the wheel goes straight past it to the Flickable behind (2026-07-31).
+    // A disabled item receives no input of ANY kind — nothing a future input type can slip through.
     readonly property bool modalOpen: manageOpen || confirmOpen
 
-    readonly property int topH: 60          // the header row (Thomas)
+    readonly property int topH: 60          // the header row
     readonly property int grip: 6           // resize edge thickness
     readonly property int fadeHeight: 17    // the scroller's top clearance
     readonly property int sideW: 204
@@ -66,7 +64,7 @@ Window {
     readonly property real colModelF: 0.34      // Model column, as a fraction of the row
     readonly property real colKeyF:   0.66      // Key column
 
-    // Reduced motion is the machine's "show animations" setting, mirrored by the host (U-01).
+    // Reduced motion is the machine's "show animations" setting, mirrored by the host.
     readonly property int t: reducedMotion ? 0 : Theme.durationControl
 
     // Any close of the sheet (Cancel, the X, the scrim, a confirmed Remove, or a commit) forgets
@@ -119,7 +117,7 @@ Window {
     // clears it again: a new key is a new question.
     property bool addTested: false
     property string confirmTarget: ""
-    // Default ON (Thomas): the credential store is where not-hal keeps its own key, not a shared
+    // Default ON: the credential store is where the app keeps its own key, not a shared
     // vault another app reads — you would paste the key into that app and it would keep its own.
     // So a key left behind after a removal is litter, not convenience.
     property bool confirmDeleteKey: true
@@ -140,7 +138,7 @@ Window {
             return cfg.trial.models
         // On an EDIT, anything else leaves the stored key's list alone. A failed trial is a fact
         // about the key you just typed, not about the one already working, so it must not take
-        // the provider's settings down with it (Thomas). D30's rule — never blank a picker on a
+        // the provider's settings down with it. The standing rule — never blank a picker on a
         // failed fetch — applied where there is something worth protecting.
         if (addEditing && cfg.modelOptions[addProviderId] !== undefined)
             return cfg.modelOptions[addProviderId]
@@ -151,8 +149,8 @@ Window {
     }
     readonly property string addProbeMessage: {
         // One line carries every state of the credential, so the form never stacks two sentences
-        // saying related things: what to do next, then what came back. Local providers get it too
-        // (D40 fix) — their Test reaches the server and their empty picker must explain itself.
+        // saying related things: what to do next, then what came back. Local providers get it too —
+        // their Test reaches the server and their empty picker must explain itself.
         if (!addTested)
             return addKind === "local"
                    ? "Press Test to reach the server and load its models"
@@ -178,9 +176,9 @@ Window {
     // Can this form be committed? Adding a model with a junk credential used to be possible — the
     // button never asked whether the provider had actually answered. A model list only exists after
     // a successful fetch, so requiring one IS requiring a working credential; requiring a chosen
-    // model stops a provider being added with nothing to call. Uniform across cloud and LOCAL now
-    // (D40 fix): a local provider is reached with the same Test button, so it earns its list the
-    // same way — before this, local could never populate a model and so could never be added.
+    // model stops a provider being added with nothing to call. Uniform across cloud and LOCAL: a
+    // local provider is reached with the same Test button, so it earns its list the same way —
+    // before this, local could never populate a model and so could never be added.
     readonly property bool canCommit: addProviderId !== "" && addModel !== "" && addProbe === "ok"
 
     function openAdd() {
@@ -254,15 +252,15 @@ Window {
             return
         // A key typed but NOT confirmed with Test must not be silently dropped on Done: keep the
         // sheet open (the status line already reads "Press Test…") rather than closing as if it
-        // saved (Thomas). The only-ok-writes rule stands; this stops the SILENT loss beside it.
+        // saved. The only-ok-writes rule stands; this stops the SILENT loss beside it.
         if (addKind === "cloud" && addKey !== "" && addProbe !== "ok") {
             addTested = false          // ensure the line reads the "Press Test first" prompt
             return
         }
-        // The key goes to the credential store, never into the settings file (spec/50 rule 10).
+        // The key goes to the credential store, never into the settings file.
         // An empty box on an edit means "leave the stored key alone", not "clear it" — and a key
         // that has NOT come back ok is never written at all, so a wrong key cannot replace a
-        // working one just because you pressed Done (Thomas).
+        // working one just because you pressed Done.
         if (addKind === "cloud" && addKey !== "" && addProbe === "ok")
             cfg.setKey(addProviderId, addKey)
         // Temperature is written as a NUMBER, and ONLY for a provider whose catalogue declares the
@@ -335,7 +333,7 @@ Window {
         }
     }
 
-    // A dropdown with no box — value + chevron. ONE class now (D40): the mono variant is gone with
+    // A dropdown with no box — value + chevron. ONE class now: the mono variant is gone with
     // the rest of the mono, so there is no size for a call site to pick and none to get wrong.
     component Dropdown: Item {
         id: dd
@@ -415,7 +413,7 @@ Window {
         Popup {
             id: menu
             // Takes focus while open so its default CloseOnEscape fires — a hand-rolled popup with
-            // focus:false never sees Escape, so it could only be dismissed with the mouse (D40 fix).
+            // focus:false never sees Escape, so it could only be dismissed with the mouse.
             focus: true
             onClosed: dd.closedAt = Date.now()
             x: dd.alignRight ? dd.width - width : 0
@@ -652,7 +650,7 @@ Window {
         signal picked(string value)
         // A tight square package: the track hugs its cells, and an icon cell is as tall as it
         // is wide. Wrapping the set closely is what makes it read as one control rather than as
-        // three loose buttons (Thomas).
+        // three loose buttons.
         readonly property int cell: Theme.iconMd + 12
         implicitWidth: segRow.implicitWidth + 4
         implicitHeight: cell + 4
@@ -894,7 +892,7 @@ Window {
         Component {
             id: bindingCtl
             KeyRecorder {
-                // Fixed box, click to change: no separate button (Thomas). Width and height are
+                // Fixed box, click to change: no separate button. Width and height are
                 // set explicitly so recording cannot resize it — the shift was the giveaway that
                 // it was sizing to its own text.
                 width: 168
@@ -937,7 +935,7 @@ Window {
             // nothing with it is the same species of lie as an indicator that lights when the mic
             // is shut. Dimmed is this window's own idiom for "decided, not built" — the same
             // treatment every `built: false` row gets. Building it is folded into the
-            // absent-settings design session (STATE).
+            // absent-settings design session.
             Field {
                 id: search
                 anchors.top: parent.top; anchors.topMargin: 12
@@ -977,7 +975,7 @@ Window {
                     width: parent.width - 20
 
                     // One item per schema pane, then the two panes that are decided but unbuilt.
-                    // They are rendered and NOT clickable (Thomas): the sidebar shows where they
+                    // They are rendered and NOT clickable: the sidebar shows where they
                     // are going without pretending they exist.
                     Repeater {
                         model: cfg.panes
@@ -1001,8 +999,8 @@ Window {
                         font.family: fontFamily; font.pixelSize: Theme.fontSmall
                         topPadding: 13; bottomPadding: 4; leftPadding: 9
                     }
-                    // Decided, unbuilt, and NOT clickable (Thomas): the sidebar shows where the
-                    // four absent settings are going (spec/70 §3) without pretending they exist.
+                    // Decided, unbuilt, and NOT clickable: the sidebar shows where the four absent
+                    // settings are going without pretending they exist.
                     NavItem { label: "Speech";    glyph: ico.mic;   soon: true }
                     NavItem { label: "Dictation"; glyph: ico.lines; soon: true }
                 }
@@ -1017,7 +1015,7 @@ Window {
                 height: 52
 
                 // Not a button: it reports, it does not act — exactly what the "Mic closed" text
-                // it replaced did. spec/50 rule 4: it whitens and fills ONLY on real capture.
+                // it replaced did. It whitens and fills ONLY on real capture.
                 Item {
                     id: micMark
                     width: 20; height: 20
@@ -1029,7 +1027,7 @@ Window {
                     // only read when overlay is non-null.
                     readonly property bool capturing: overlay ? overlay.state === "listening" : false
                     readonly property real level: capturing ? overlay.mic : 0
-                    // The Lucide mic, not a drawing (Thomas): every icon in this
+                    // The Lucide mic, not a drawing: every icon in this
                     // window comes from the font. The level fills it by CLIPPING a second copy
                     // drawn in the bright ink over the dim one — so the shape is always the
                     // font's, and the fill can never leave the glyph's own silhouette.
@@ -1055,7 +1053,7 @@ Window {
                         }
                     }
                     // Capturing at all reads as white even at silence, so an open mic is never
-                    // invisible (spec/50 rule 4 — the indicator is about the WINDOW being open).
+                    // invisible (the indicator is about the WINDOW being open).
                     Glyph {
                         anchors.centerIn: parent
                         visible: micMark.capturing
@@ -1081,7 +1079,7 @@ Window {
                     anchors.rightMargin: 10 - (alPlayer ? alPlayer.padRight : 0) * 2
                     anchors.bottom: parent.bottom
                     // Cancel the frame's empty rows, less 1px so her base clears the window's
-                    // rounded corner (Thomas).
+                    // rounded corner.
                     anchors.bottomMargin: -(alPlayer ? alPlayer.padBottom : 0) * 2 + 1
                 }
             }
@@ -1208,7 +1206,7 @@ Window {
         height: 32
         radius: 7
         // Shade only — the white outline read as a focus ring on something that is merely
-        // selected (Thomas).
+        // selected.
         color: active ? Theme.surfaceLift
              : (nh.hovered && !soon ? Theme.uiNavHover : "transparent")
         HoverHandler { id: nh; enabled: !ni.soon; cursorShape: Qt.PointingHandCursor }
@@ -1516,7 +1514,7 @@ Window {
     // whether to tidy, and with what. Splitting the model onto its own row left it looking like an
     // unrelated setting that had drifted in.
     // Everything on one line: label, the two pickers, the switch. The pickers are DIMMED rather
-    // than hidden when tidying is off (Thomas) — you can still see what is configured, and the
+    // than hidden when tidying is off — you can still see what is configured, and the
     // stored choice is never cleared, so switching back on returns it.
     component CleanupRow: Item {
         id: cr
@@ -1568,7 +1566,7 @@ Window {
                 value: cr.pid
                 placeholder: "Provider"
                 // Changing the provider CLEARS the model: a model id belongs to one provider, and
-                // leaving it behind offered Fable 5 from Ollama (Thomas).
+                // leaving it behind offered Fable 5 from Ollama.
                 onPicked: function (v) {
                     if (v !== cr.pid && cr.modelKey !== "")
                         cfg.set(cr.modelKey, "")
@@ -1625,7 +1623,7 @@ Window {
         }
     }
 
-    // ── Connectors: the consent table (D38) ──
+    // ── Connectors: the consent table ──
     Component {
         id: connectorsPage
         Column {
@@ -1736,7 +1734,7 @@ Window {
             }
         }
         // One line per tool once there is more than one. Dot-separating them read as a run-on
-        // sentence, and a connector GAINING tools is the expected case (D38).
+        // sentence, and a connector GAINING tools is the expected case.
         Column {
             id: toolCol
             x: Math.round(cn.width * 0.30)
@@ -1922,7 +1920,7 @@ Window {
                         readonly property var caps: cat.capabilities !== undefined
                                                     ? cat.capabilities : ({})
                         // Nothing below can be truthful until the provider has been reached and
-                        // named its models — for LOCAL as well as cloud now (D40 fix): a local
+                        // named its models — for LOCAL as well as cloud now: a local
                         // provider earns its list from the same Test button, so it is no longer
                         // "ready" the instant its sheet opens with an empty picker.
                         readonly property bool ready: root.addModelList.length > 0
@@ -1933,7 +1931,7 @@ Window {
                         // own knob. Where the effort scale already carries `none`, the OFF end of
                         // that dial IS the thinking switch (Ollama), so a second control would be
                         // two names for one wire parameter — which is exactly what made this card
-                        // read as if they were independent (Thomas, 2026-08-03).
+                        // read as if they were independent (2026-08-03).
                         readonly property bool showThinking: caps.thinking === true
                             && (caps.effort === undefined || caps.effort.indexOf("none") < 0)
                         readonly property bool hasDials: caps.effort !== undefined
@@ -2008,7 +2006,7 @@ Window {
                             }
                             // A local provider is reached the SAME way a cloud key is checked — the
                             // Test button probes the endpoint and loads the model list, which is what
-                            // makes a local provider addable at all (D40 fix). It passes the TYPED
+                            // makes a local provider addable at all. It passes the TYPED
                             // address: the entry is not stored yet, so there is nothing to read.
                             Btn {
                                 label: "Test"
@@ -2036,13 +2034,13 @@ Window {
                             visible: formCol.ready && formCol.caps.effort !== undefined
                             divider: formCol.showThinking || formCol.caps.temperature === true
                             label: "Effort"
-                            // A dropdown of the provider's own words, not a dot cluster (Thomas,
-                            // 2026-08-03): the dots were hard to read, and worse, they rendered
+                            // A dropdown of the provider's own words, not a dot cluster
+                            // (2026-08-03): the dots were hard to read, and worse, they rendered
                             // `none` as one dot — "a little effort", when on Ollama's wire it is
                             // the OFF switch. Words cannot lie about that. This is also the
-                            // standardised control: spec/70 §2 says a dropdown shows either WORDS
-                            // or a machine value, and an effort level is words. Labels come from
-                            // the schema (hard rule 3), so `xhigh` reads "Extra" everywhere.
+                            // standardised control: a dropdown shows either WORDS or a machine
+                            // value, and an effort level is words. Labels come from the schema,
+                            // so `xhigh` reads "Extra" everywhere.
                             Dropdown {
                                 alignRight: true
                                 options: formCol.caps.effort !== undefined ? formCol.caps.effort : []
@@ -2129,7 +2127,7 @@ Window {
 
     Component { id: isDefaultChip
         // Same height AND font as setDefaultBtn (Theme.controlHeight / fontBase), so the row does
-        // not resize as it flips between "Set as default" and "Current default" (Thomas).
+        // not resize as it flips between "Set as default" and "Current default".
         Rectangle {
             implicitWidth: dcl.implicitWidth + 26; implicitHeight: Theme.controlHeight
             radius: Theme.radiusControl
@@ -2190,7 +2188,7 @@ Window {
                     wrapMode: Text.WordWrap
                 }
                 CheckBox {
-                    // Only shown when a key is actually STORED (D40's recorded rule): a key-auth
+                    // Only shown when a key is actually STORED: a key-auth
                     // provider with nothing saved has nothing to delete, so offering to "also
                     // delete the stored API key" — checked — describes a no-op.
                     visible: cfg.catalog[root.confirmTarget] !== undefined

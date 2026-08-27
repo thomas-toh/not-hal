@@ -1,5 +1,5 @@
 // The app's scrollbar, in one place — a thin rounded thumb that fades to a light track, shared by
-// the settings window and the island's peek so they scroll identically (Thomas, 2026-07-27). Was
+// the settings window and the island's peek so they scroll identically (2026-07-27). Was
 // four near-identical inline copies; unified here, with a pointer cursor on hover added.
 //
 // Works vertical OR horizontal: attaching it as `ScrollBar.vertical`/`ScrollBar.horizontal` sets the

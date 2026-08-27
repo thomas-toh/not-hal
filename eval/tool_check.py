@@ -6,7 +6,7 @@ from backend.orchestrator import (
 
 # Contract T, LIVE: does the MODEL pick the right tool for a plain request? That is the one thing
 # no offline check can reach — `backend.tools --selfcheck` proves the executor, and the backends were
-# driven by hand, but "a model decided to call this" is the empty column in STATE's tool ledger.
+# driven by hand, but "a model decided to call this" is the one thing nobody has recorded for any built tool.
 #
 # `want_arg` is (parameter, substring), matched case-insensitively, because a model may reasonably
 # say "Spotify" or "spotify" and either is right. `want_tool = ""` means NO tool should be called —
@@ -118,7 +118,7 @@ def _check_tools() -> None:
     if failures:
         raise SystemExit(f"{failures} case(s) FAILED")
 
-# The routing prompt under test. The assistant persona asks a model to BE not-hal holding tools, and
+# The routing prompt under test. The assistant persona asks a model to BE the assistant holding tools, and
 # a model in that seat reaches for them — measured 2026-08-04, the best of five still fired on one
 # ordinary sentence in eight. This asks a narrower question, and applies four levers that are
 # standard for intent classification:
@@ -265,7 +265,7 @@ def _embed_sweep(models: list[str]) -> None:
 def _ollama(endpoint: str, path: str, body: dict | None = None, timeout: int = 60):
     """One call to Ollama's NATIVE api. The daemon speaks `/v1` and nothing else; this harness takes
     the exception because its subject is the runner itself — `/v1` ignores `keep_alive`, so an
-    eviction cannot be asked for on the wire not-hal normally uses (tested 2026-08-02)."""
+    eviction cannot be asked for on the wire the app normally uses (tested 2026-08-02)."""
     import json as _json
     import urllib.request
     url = f"http://{endpoint.replace('localhost', '127.0.0.1')}{path}"
@@ -279,7 +279,7 @@ def _ollama(endpoint: str, path: str, body: dict | None = None, timeout: int = 6
 def _clear_vram(endpoint: str) -> None:
     """Evict every resident model and prove the runner holds nothing.
 
-    Thomas's constraint, and it is not fussiness: a combined run cycling five models over 16 GB
+    Eviction is required before every measurement: a combined run cycling five models over 16 GB
     scored one model 7/9 where three isolated runs scored it 8/9 every time. Partial CPU offload
     under memory pressure changes the numerics, so a sweep that skipped this would measure memory
     pressure and report it as model quality.
@@ -418,9 +418,9 @@ if __name__ == "__main__":
         _selfcheck()
     elif "--sweep" in sys.argv:
         # The dev trace in _one_round prints every delta, and a character outside the console
-        # codepage raises UnicodeEncodeError that ends the turn (orchestrator.py:346, logged in
-        # STATE). Replacing here keeps a model's own words from being scored as its failure. The
-        # daemon still carries the bug; this only stops the harness inheriting it.
+        # codepage raises UnicodeEncodeError that ends the turn (orchestrator.py:346). Replacing
+        # here keeps a model's own words from being scored as its failure. The daemon still
+        # carries the bug; this only stops the harness inheriting it.
         sys.stdout.reconfigure(errors="replace")
         _a = [x for x in sys.argv[sys.argv.index("--sweep") + 1:] if not x.startswith("--")]
         _models = [m for m in _a[0].split(",") if m]

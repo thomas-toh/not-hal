@@ -49,13 +49,13 @@ from shared import settings
 log = logging.getLogger("nothal.tools")
 
 # One line per tool call, appended, never rewritten. Beside nothal.log so "delete logs/" purges
-# both in one action (spec/50 rule 3). Resolved through shared.log so its selfcheck can redirect it.
+# both in one action. Resolved through shared.log so its selfcheck can redirect it.
 AUDIT_FILE = _log.LOG_DIR / "audit.jsonl"
 
 # The highest tier `execute()` will run and `tool_specs()` will offer. Raising it is how a tier
 # turns on, once its backend AND its gate exist. Tier 2's gate is the announce earcon, now wired
 # (orchestrator._run_tool_seen); Tier 3 still needs the propose-then-tap confirmation on the
-# Teleprompter (D26), so the ceiling stops here.
+# Teleprompter, so the ceiling stops here.
 # ponytail: a single ceiling, not per-tier flags — split only if a tier needs enabling alone.
 MAX_TIER = 2
 
@@ -134,10 +134,10 @@ def _win_battery() -> str:
 # ponytail: the index is reached through PowerShell's COM rather than pywin32. Its provider
 # (Search.CollatorDSO) is OLE-DB — ADO is the only route, the stdlib has no COM, and pywin32 is
 # not a dependency of this project (backend/paste.py made the same call for the clipboard).
-# subprocess is a sanctioned Windows backend (docs/04 §Tools). This is NOT the raw-shell tool
-# spec/30 rule 1 forbids: the model supplies search WORDS, never a command, and the finished SQL
-# is handed over in an environment variable, so nothing the model wrote is ever parsed as
-# PowerShell. Swap to pywin32 if the ~0.5 s process start ever matters.
+# subprocess is the Windows backend here. This is NOT a raw-shell tool, which the tool rules
+# forbid: the model supplies search WORDS, never a command, and the finished SQL is handed over
+# in an environment variable, so nothing the model wrote is ever parsed as PowerShell. Swap to
+# pywin32 if the ~0.5 s process start ever matters.
 
 FIND_LIMIT = 8
 
@@ -194,7 +194,8 @@ def _find_document(args: dict) -> str:
     # Each term double-quoted and AND-ed: bare multi-word text is a syntax error to CONTAINS, and
     # quoting also demotes a stray AND/OR/NEAR from operator to literal word.
     where = [f"""CONTAINS('{' AND '.join(f'"{t}"' for t in query.split())}')"""]
-    # The valid kinds live in the registry, not here (hard rule 3) — read them back off it.
+    # The valid kinds live in the registry, not here (the schema is the source of truth) — read
+    # them back off it.
     entry = _entry("find_document") or {}
     kinds = entry.get("parameters", {}).get("properties", {}).get("kind", {}).get("enum", [])
     if args.get("kind") in kinds:
@@ -237,7 +238,7 @@ def _find_document(args: dict) -> str:
 # filtering, and only headers come back — sender, date, subject. Bodies are searched (that is what
 # `query` is for) but never returned, and nothing is opened, replied to or sent.
 #
-# Strictly the LOCAL desktop store over MAPI — no Graph, no cloud API, no credentials (spec/50).
+# Strictly the LOCAL desktop store over MAPI — no Graph, no cloud API, no credentials.
 # Same PowerShell-COM subprocess as find_document, and for the same reason: Outlook automation is
 # COM-only and pywin32 is not a dependency.
 
@@ -351,7 +352,7 @@ def _search_email(args: dict) -> str:
 
 # --- Tier 2: the reversible actions -----------------------------------------------------------
 #
-# Tier 2 is "not-hal may do this without asking, because you can undo it" — an app opened, a window
+# Tier 2 is "the app may do this without asking, because you can undo it" — an app opened, a window
 # raised, a media key pressed. What keeps that safe is not the tier alone but the SHAPE of the
 # parameters: the model supplies a WORD, never a path and never a command. Each word is matched
 # against something that already exists on this machine — a Start Menu shortcut, the title of an
@@ -359,15 +360,14 @@ def _search_email(args: dict) -> str:
 # an app the user already has. There is no parameter here that can name something new.
 #
 # Each of these also ANNOUNCES itself: the orchestrator pings `success`/`failure` as any call at
-# Tier 2 or above returns (spec/30's tier table), so an action taken on your machine is never
-# entirely silent.
+# Tier 2 or above returns, so an action taken on your machine is never entirely silent.
 
 _KEYEVENTF_KEYUP = 0x0002
 _SW_RESTORE = 9
 
-# The action names belong to the registry (hard rule 3); this only maps each to its Windows
-# virtual key code. The selfcheck asserts the two sets match exactly, so adding an action to the
-# schema without a key here fails offline instead of in front of the user.
+# The action names belong to the registry, which is the source of truth; this only maps each to
+# its Windows virtual key code. The selfcheck asserts the two sets match exactly, so adding an
+# action to the schema without a key here fails offline instead of in front of the user.
 _MEDIA_KEYS = {
     "play_pause": 0xB3,     # VK_MEDIA_PLAY_PAUSE
     "next": 0xB0,           # VK_MEDIA_NEXT_TRACK
@@ -418,19 +418,19 @@ def _start_apps(refresh: bool = False) -> list[tuple[str, str]]:
     `Get-StartApps` rather than walking the Start Menu FOLDERS, which was the first cut and was
     wrong: those folders hold only classic installers' `.lnk` files, so Notepad, Calculator,
     Terminal and every Store app are missing from them — which is precisely the set a person is
-    most likely to ask for. Measured on this box: 110 shortcuts on disk against 139 apps Windows
-    actually lists.
+    most likely to ask for. Measured on the development machine: 110 shortcuts on disk against
+    139 apps Windows actually lists.
 
-    Same PowerShell subprocess as the retrieval tools, for the same reason (spec/30 rule 3): a
-    sanctioned Windows backend, and pywin32 is not a dependency of this project.
+    Same PowerShell subprocess as the retrieval tools, for the same reason: PowerShell ships
+    with Windows, and pywin32 is not a dependency of this project.
 
     **Cached for the life of the process, refreshed on a miss.** The ~0.7 s subprocess was
     acceptable while it hid behind a model round; it is not once the deterministic path stops
-    calling one, and in use the whole turn felt slower than typing
-    (2026-08-03). Staleness has exactly one symptom — an app installed since we last looked is
-    not found — so `_open_app` refreshes and retries once when a name matches nothing, and a
-    newly installed app is found on the second look. Every hit stays free, and the only call that
-    pays twice is one that was already failing."""
+    calling one, and in use the whole turn felt slower than typing (2026-08-03). Staleness has
+    exactly one symptom — an app installed since we last looked is not found — so `_open_app`
+    refreshes and retries once when a name matches nothing, and a newly installed app is found
+    on the second look. Every hit stays free, and the only call that pays twice is one that was
+    already failing."""
     global _APPS_CACHE
     if _APPS_CACHE and not refresh:
         return _APPS_CACHE
@@ -579,8 +579,8 @@ def _to_foreground(hwnd) -> bool:
     keypress — also works, but it lands in whatever app is in front and can pop its menu bar,
     which is a side effect on a window nobody asked us to touch.
 
-    The verification is the point: a call that silently failed and reported success would be the
-    D36 failure again — a capability failure narrated as though it had happened."""
+    The verification is the point: a call that silently failed and reported success would be a
+    capability failure narrated as though it had happened."""
     from ctypes import wintypes
 
     u, k = ctypes.windll.user32, ctypes.windll.kernel32
@@ -656,8 +656,8 @@ _BACKENDS: dict[str, Callable[[dict], str]] = {
     "focus_window": _focus_window,
     "media_control": _media_control,
     # set_timer is in the registry and within the tier, but has no backend: a timer FIRES outside
-    # any turn and Contract P has no message that can announce it (STATE, Track T). No backend =
-    # never offered and refused if called, which is the honest state of it.
+    # any turn and Contract P has no message that can announce it. No backend = never offered and
+    # refused if called, which is the honest state of it.
 }
 
 
@@ -665,7 +665,8 @@ _BACKENDS: dict[str, Callable[[dict], str]] = {
 
 
 def _registry() -> list[dict]:
-    """The raw Contract T registry (shared/schemas/tools.json), loaded fresh (hard rule 3)."""
+    """The raw Contract T registry (shared/schemas/tools.json), loaded fresh — the schema is the
+    source of truth."""
     return load_schemas()["tools"]["tools"]
 
 
@@ -674,10 +675,10 @@ def _entry(name: str) -> dict | None:
 
 
 def _connectors() -> dict[str, bool]:
-    """`{connector id: is it switched on}`, read FRESH from the user's settings (D38). Derived
-    from the schema's `connector_*` entries rather than a list here, so adding a connector is a
-    JSON edit (hard rule 3). Settings are re-read every turn, which is why a toggle applies to
-    the next utterance with no restart and no watcher."""
+    """`{connector id: is it switched on}`, read FRESH from the user's settings. Derived from the
+    schema's `connector_*` entries rather than a list here, so adding a connector is a JSON edit.
+    Settings are re-read every turn, which is why a toggle applies to the next utterance with no
+    restart and no watcher."""
     now = settings.load()
     # `is True`, never `bool(...)`: a consent gate must be EXPLICIT. settings.load() has already
     # merged the schema defaults (real booleans), so an unset key reads its default; the only thing
@@ -698,14 +699,14 @@ def _connected(entry: dict, on: dict[str, bool]) -> bool:
 def label_of(name: str) -> str:
     """A tool said in a sentence a person would use, from the registry's `label` — or the bare
     tool name if it has none. What the island shows while the tool runs and what the connector
-    card lists (D38); one wording, read from the schema by both (hard rule 3)."""
+    card lists; one wording, read from the schema by both."""
     return (_entry(name) or {}).get("label", "") or name
 
 
 def tier_of(name: str) -> int:
     """A tool's tier from the registry, or 0 if it has none — so a caller asking "was that a
     Tier-2 action?" about a refused unknown tool gets a plain no rather than an exception. What
-    the orchestrator reads to decide whether the call needs announcing (spec/30's tier table)."""
+    the orchestrator reads to decide whether the call needs announcing."""
     return (_entry(name) or {}).get("tier", 0)
 
 
@@ -719,17 +720,17 @@ def implemented(entry: dict) -> bool:
 
 def tool_specs() -> list[dict]:
     """The tools handed to the model this turn: only those with a backend on this platform,
-    within the enabled tier, AND whose connector the user has switched on (spec/30 rule 3 — the
-    model never receives a tool it cannot call). Tier and connector are independent: either one
-    alone is enough to withhold a tool."""
+    within the enabled tier, AND whose connector the user has switched on — the model never
+    receives a tool it cannot call. Tier and connector are independent: either one alone is
+    enough to withhold a tool."""
     on = _connectors()
     return [t for t in _registry() if implemented(t) and _connected(t, on)]
 
 
 def disabled_note() -> str:
     """One sentence for the system prompt naming what the user has switched OFF, or "" if
-    nothing is (D38). Without it a hidden tool is simply absent, and a model asked to find a file
-    improvises instead of saying it cannot — the can't-rendered-as-didn't failure D36 found in
+    nothing is. Without it a hidden tool is simply absent, and a model asked to find a file
+    improvises instead of saying it cannot — the can't-rendered-as-didn't failure seen in
     `search_email`, which is a lie about what happened, not merely an unhelpful answer.
 
     Only connectors that would OTHERWISE be usable are named — a connector with no implemented,
@@ -749,7 +750,7 @@ def disabled_note() -> str:
 def execute(call: ToolCall, *, session: str = "", transcript: str = "") -> tuple[str, str]:
     """Run one tool call through Contract T. Returns `(content, outcome)` and NEVER raises: a
     tool fault becomes a string the model reads and narrates, not an exception that kills the
-    turn. Every path — run, refused, errored — is audited before returning (spec/30 rule 2)."""
+    turn. Every path — run, refused, errored — is audited before returning."""
     name = call.name
     args = dict(call.input or {})
     t0 = time.perf_counter()
@@ -763,7 +764,7 @@ def execute(call: ToolCall, *, session: str = "", transcript: str = "") -> tuple
         content = f"Tool {name!r} needs a confirmation step that is not built yet."
         outcome = f"refused:tier_{entry.get('tier')}"
     elif not _connected(entry, _connectors()):
-        # The consent gate, checked again here and not only in the filter (D38): a tool the user
+        # The consent gate, checked again here and not only in the filter: a tool the user
         # switched off must be dead even if something else calls it — history from before the
         # toggle, a resampled round, a future caller that skips tool_specs().
         content = f"Tool {name!r} is switched off in this user's settings."
@@ -780,9 +781,9 @@ def execute(call: ToolCall, *, session: str = "", transcript: str = "") -> tuple
 
 
 def _audit(session, transcript, tool, args, outcome, duration_ms) -> None:
-    """Append one audit record (spec/30 rule 2 shape). Best-effort on the WRITE: a full disk must
-    not take the daemon down mid-turn, so a failed write is logged loudly and the call proceeds —
-    the same degrade-don't-crash posture shared.log takes.
+    """Append one audit record. Best-effort on the WRITE: a full disk must not take the daemon
+    down mid-turn, so a failed write is logged loudly and the call proceeds — the same
+    degrade-don't-crash posture shared.log takes.
     ponytail: warn-and-proceed rather than refuse-if-unloggable; harden to refuse only if the
     audit trail ever has to be provably complete on this prototype."""
     record = {
@@ -811,10 +812,11 @@ def _selfcheck() -> None:
 
     reg = _registry()
     assert reg, "shared/schemas/tools.json must carry the starter tools"
-    assert all(t.get("connector") for t in reg), "every tool declares a connector (D38)"
+    assert all(t.get("connector") for t in reg), "every tool declares a connector"
 
     # Both gates read the USER's settings, so pointing them at an empty file is what makes this
-    # check deterministic — otherwise it would pass or fail with whatever is toggled on this box.
+    # check deterministic — otherwise it would pass or fail with whatever is toggled on this
+    # machine.
     # No try/finally: this runs as a one-shot script, so a leaked env var in a process that is
     # either about to print OK or about to die on a traceback buys nothing.
     settings_dir = tempfile.TemporaryDirectory()
@@ -823,7 +825,7 @@ def _selfcheck() -> None:
     assert keys, "the connectors pane must declare its settings (schemas/settings.json)"
 
     # A fresh install: System only. Files, Email and Clipboard are consent, not danger, and stay
-    # off until they are asked for (D38) — so not-hal answers and dictates and reaches nothing.
+    # off until they are asked for — so the app answers and dictates and reaches nothing.
     assert {t["name"] for t in tool_specs()} == {"system_status"}, tool_specs()
 
     # Every connector on: every tool that has a backend AND sits within the ceiling appears.
@@ -854,7 +856,7 @@ def _selfcheck() -> None:
     # A consent gate must be EXPLICIT: a hand-edited file holding a non-boolean fails CLOSED. Only
     # the literal boolean `true` is ON — "false"/"0"/"off" are truthy STRINGS that a bool() read
     # would have flipped on, the one direction consent must never fail. (The UI only ever writes
-    # real booleans; this is the file-override path spec/70 §2 sanctions.)
+    # real booleans; only a hand-edited file can put anything else there.)
     for junk in ("false", "0", "off", "true", 1):
         settings.set("connector_files", junk)
         assert "find_document" not in {t["name"] for t in tool_specs()}, \
@@ -865,7 +867,7 @@ def _selfcheck() -> None:
     assert {t["name"] for t in tool_specs()} == offered - {"find_document"}, tool_specs()
 
     # ...and the model is TOLD, in prose. A hidden tool is merely absent, which reads as "no such
-    # capability exists" and gets improvised around — the can't-rendered-as-didn't failure of D36.
+    # capability exists" and gets improvised around — the can't-rendered-as-didn't failure.
     # Only connectors with a usable tool behind them are named: saying "Web is off" would imply
     # switching it on would work, and there is no web tool at all.
     note = disabled_note()
@@ -952,9 +954,9 @@ def _selfcheck() -> None:
     assert _match_window("mailchimp", wins) == (1, "Mailchimp — Google Chrome")
     assert _match_window("photoshop", wins) is None and _match_window("", wins) is None
 
-    # media_control's key map must cover the registry's enum EXACTLY. The registry is the truth
-    # (hard rule 3); an action added there with no key here would be offered to the model and
-    # then fail in front of the user, which is exactly the shape this catches offline.
+    # media_control's key map must cover the registry's enum EXACTLY. The registry is the truth;
+    # an action added there with no key here would be offered to the model and then fail in front
+    # of the user, which is exactly the shape this catches offline.
     actions = _entry("media_control")["parameters"]["properties"]["action"]["enum"]
     assert set(actions) == set(_MEDIA_KEYS), (sorted(actions), sorted(_MEDIA_KEYS))
 
@@ -1025,8 +1027,8 @@ def _selfcheck() -> None:
         assert outcome == "ok" and content.strip(), (content, outcome)
 
         # A tool whose connector the user switched off is REFUSED even when called directly, not
-        # merely hidden (D38): the filter is convenience, the allowlist is the defence. This is
-        # the path a stale round or a caller that skips tool_specs() would take.
+        # merely hidden: the filter is convenience, the allowlist is the defence. This is the path
+        # a stale round or a caller that skips tool_specs() would take.
         settings.set("connector_clipboard", False)
         content, outcome = execute(ToolCall("9", "read_clipboard", {}))
         assert outcome == "refused:connector_clipboard", (content, outcome)
@@ -1047,7 +1049,7 @@ def _selfcheck() -> None:
         settings.set("connector_apps_media", True)
 
         # Every one of those calls left exactly one audit line, with the required fields — a
-        # refused call is audited exactly as a run one is (spec/30 rule 2).
+        # refused call is audited exactly as a run one is.
         lines = AUDIT_FILE.read_text(encoding="utf-8").splitlines()
         assert len(lines) == 13, f"every call must audit once, got {len(lines)}"
         rec = json.loads(lines[0])

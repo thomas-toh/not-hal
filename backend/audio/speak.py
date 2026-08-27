@@ -1,4 +1,4 @@
-"""Track G step 4 (docs/04 §8): voice out — earcons + text-to-speech.
+"""Voice out: earcons and text-to-speech.
 
 Two ways for the bridge to make sound:
 - earcon(id): play a designed earcon WAV for one of the ids in
@@ -12,7 +12,7 @@ Playback uses sounddevice (same lib as the mic, output side). Generate-then-play
 streaming TTS is a later latency optimisation.
 
 Run:
-    python -m backend.audio.speak "hello, I am not-hal"   # speak text
+    python -m backend.audio.speak "hello, I am your assistant"   # speak text
     python -m backend.audio.speak --earcon awake        # play one earcon
     python -m backend.audio.speak --earcon all          # audition every earcon
     python -m backend.audio.speak --selfcheck           # no audio/model: check tone gen
@@ -39,10 +39,10 @@ log = logging.getLogger("nothal.speak")
 # per-sentence. Pure noise; real phonemizer failures still surface as errors.
 logging.getLogger("phonemizer").setLevel(logging.ERROR)
 
-# Output rate is an audio schema constant -- load it, never hardcode (hard rule 3).
+# Output rate is an audio schema constant -- load it, never hardcode (the schema is the truth).
 SAMPLE_RATE_OUT = load_schemas()["audio"]["outbound"]["sampleRateHz"]
 
-VOICE = "bf_emma:45,af_heart:40,bm_george:15"   # not-hal's voice (chosen by ear, 2026-07-13):
+VOICE = "bf_emma:45,af_heart:40,bm_george:15"   # The app's voice (chosen by ear, 2026-07-13):
                                                 # British-led (emma dominant -> en-gb phonemes),
                                                 # heart's clarity, george for depth; --voice to retune
 
@@ -99,7 +99,7 @@ def earcon(name: str) -> None:
 
 
 class OutputPump:
-    """Persistent warm output stream (spec/40, binding for BT devices): one OutputStream
+    """Persistent warm output stream (binding for BT devices): one OutputStream
     held open for the daemon's life, fed silence between sounds so a Bluetooth link never
     idles — the onset-buzz fix. play() enqueues without blocking; cut() drops all queued
     audio (the barge-in stop, ≤ 250 ms); the callback runs on PortAudio's thread, so the
@@ -162,7 +162,7 @@ _KOKORO_BASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/mo
 _KOKORO_FILES = {"kokoro-v1.0.onnx": _KOKORO_BASE + "/kokoro-v1.0.onnx",
                  "voices-v1.0.bin": _KOKORO_BASE + "/voices-v1.0.bin"}
 _kokoro = None
-_kokoro_lock = threading.Lock()    # D39: see listen._ensure_whisper — since warm-up moved to
+_kokoro_lock = threading.Lock()    # see listen._ensure_whisper — since warm-up moved to
                                    # a background thread, two callers can race this lazy init.
 
 
@@ -194,7 +194,7 @@ def _kokoro_model_paths() -> tuple[Path, Path]:
 
 def _sentence_chunks(text: str) -> list[str]:
     """Split text at sentence terminators for per-sentence synthesis. ponytail: 'Dr.'
-    mis-splits into an extra pause — rare and mild; M0.5 normalization cleans inputs."""
+    mis-splits into an extra pause — rare and mild; a later normalisation pass cleans inputs."""
     return [p for p in re.split(r"(?<=[.!?])\s+", text.strip()) if p]
 
 
@@ -221,7 +221,7 @@ def synth(text: str, voice: str = VOICE, speed: float = 1.0):
     Per-sentence synthesis, joined with SENTENCE_GAP_MS of silence: Kokoro rushes
     sentence boundaries and flattens prosody on long inputs, so pacing is ours and
     each sentence gets its natural contour. (Also the unit sentence-streamed TTS
-    would need, if ever unparked — see STATE.)
+    would need, if ever unparked.)
 
     `voice` may be a single name or a blend, e.g. 'af_heart:60,af_nicole:40' —
     Kokoro voices are style vectors, so a weighted mix is itself a voice."""
@@ -306,7 +306,7 @@ def _selfcheck() -> None:
 
 def main() -> None:
     setup_logging()
-    ap = argparse.ArgumentParser(description="not-hal voice out: earcons + TTS (Track G step 4)")
+    ap = argparse.ArgumentParser(description="Play the earcons and speak text")
     ap.add_argument("text", nargs="?", help="text to speak")
     ap.add_argument("--earcon", help="play an earcon id (or 'all' to audition every one)")
     ap.add_argument("--voice", default=VOICE,

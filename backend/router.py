@@ -1,4 +1,4 @@
-"""The router (spec/20 §Routing) — resolve a ROLE to the model that serves it, from the user's
+"""The router — resolve a ROLE to the model that serves it, from the user's
 settings. This is what finally makes the model picker BITE: until now `primary` was
 written-but-unread and the orchestrator hardcoded Claude, so choosing a provider in the settings
 window changed nothing at turn time.
@@ -14,13 +14,13 @@ each naming a provider whose per-card config lives in `models[<provider>]`
 ({on, model, effort, thinking, endpoint?}).
 
 Deliberately NOT here: choosing WHICH model for a request by its content ("short -> cheap"). That
-is the per-task layer (Layer 2), which also brings the several-instances-per-provider redesign
-(spec/70). v1 is role -> instance; the orchestrator seam (`build_for_role`) does not change when
-Layer 2 lands — only the data this module reads.
+is the per-task layer, which also brings the several-instances-per-provider redesign.
+v1 is role -> instance; the orchestrator seam (`build_for_role`) does not change when
+that layer lands — only the data this module reads.
 
 Settings are read FRESH on every call, so a change in the picker takes effect on the next turn with
 no restart. The orchestrator caches the adapter on `signature()` and rebuilds only when that
-changes, so the HTTP client is still kept across turns (spec/20 adapter lifetime).
+changes, so the HTTP client is still kept across turns.
 """
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ def resolve(role: str) -> dict | None:
         # temperature control existed holds the string "0.7".
         "temperature": _as_float(m.get("temperature")),
         # How long a LOCAL server keeps the model in VRAM. Carried here because it can only be
-        # applied when not-hal starts the server — Ollama ignores `keep_alive` on the /v1 wire
+        # applied when the app starts the server — Ollama ignores `keep_alive` on the /v1 wire
         # (tested 2026-08-02), so it rides in the environment at spawn, not on the request.
         "keep_alive": m.get("keep_alive"),
     }
@@ -89,7 +89,7 @@ def resolve(role: str) -> dict | None:
 
 def signature(role: str):
     """A hashable snapshot of what `build_for_role` would construct — the orchestrator caches its
-    adapter on this and rebuilds only when it changes, so the client is kept across turns (spec/20)
+    adapter on this and rebuilds only when it changes, so the client is kept across turns
     yet a picker change still lands next turn. None when the role is unconfigured."""
     cfg = resolve(role)
     if cfg is None:

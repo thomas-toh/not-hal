@@ -1,7 +1,7 @@
-// Keyboard-shortcut recorder (D29). At rest it shows the shortcut; a click captures live
+// Keyboard-shortcut recorder. At rest it shows the shortcut; a click captures live
 // keystrokes (Ctrl → "ctrl", Ctrl+Alt → "ctrl+alt", …) and commits the combo on release. While
 // listening the field is EMPTY until a key is held — the lit border is what says it is
-// listening (D40). `start()` claims active focus, which is what makes the abandon-on-click-away
+// listening. `start()` claims active focus, which is what makes the abandon-on-click-away
 // below work: losing focus restores the old value. The recorded string is validated against the daemon's own parser
 // (cfg.validateBinding) before it is kept, so the window never stores a binding hotkeys.py
 // will refuse — a bare key, an unknown key, or two non-modifiers are rejected here.
@@ -104,7 +104,7 @@ Rectangle {
         width: parent.width - 22
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
-        // Recording with nothing held shows NOTHING (Thomas) — the lit border already says the
+        // Recording with nothing held shows NOTHING — the lit border already says the
         // box is listening, and a prompt sitting in the field is one more thing to read. No
         // hover swap to "Record" either: clicking the box is the affordance.
         text: rec.recording
@@ -112,7 +112,7 @@ Rectangle {
               : (rec.value === "" ? "Not set" : rec.pretty(rec.value))
         color: rec.recording ? (rec.invalid ? Theme.danger : Theme.lamp)
              : (rec.value === "" ? Theme.uiTextFaint : Theme.uiText)
-        // One face throughout (D40): a shortcut is not machine text, and Windows does not set
+        // One face throughout: a shortcut is not machine text, and Windows does not set
         // its own shortcuts in a second typeface.
         font.family: fontFamily
         font.pixelSize: Theme.fontBase

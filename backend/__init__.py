@@ -1,1 +1,1 @@
-"""Project not-hal bridge daemon. See spec/ (current truth) and docs/04 (design)."""
+"""The daemon: audio, orchestrator, models and tools."""

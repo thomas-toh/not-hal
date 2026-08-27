@@ -3,7 +3,7 @@
 NDJSON framing plus the reducer that turns a message stream into what the island shows.
 This module deliberately imports nothing from `backend/` and nothing from Qt: the front-end
 depends on the *wire*, never on the daemon, so a future non-Python back-end drops in
-unchanged (spec/00 D21) — and the fiddly logic stays testable in CI, where PySide6 isn't
+unchanged — and the fiddly logic stays testable in CI, where PySide6 isn't
 installed.
 
 Run:
@@ -24,13 +24,13 @@ log = logging.getLogger("nothal.teleprompter")
 
 @lru_cache(maxsize=1)
 def status_schema() -> dict:
-    """shared/schemas/status.json — the executable contract (hard rule 3), read straight from
-    the repo rather than via shared.config, so the front-end stays decoupled from the daemon."""
+    """Load shared/schemas/status.json, the executable contract, straight from the repo
+    rather than via shared.config, so the front-end stays decoupled from the daemon."""
     root = Path(__file__).resolve().parent.parent
     return json.loads((root / "shared" / "schemas" / "status.json").read_text(encoding="utf-8"))
 
 
-# Contract P transport (spec/00 D19). LOADED from status.json, not restated — the daemon
+# The feed's transport. LOADED from status.json, not restated — the daemon
 # (backend/broadcaster.py) reads the same key and honours the same env override, so the two
 # sides cannot disagree about where the feed lives. The port used to sit in three places while
 # only the daemon read the env var, so setting it moved the daemon and left the overlay
@@ -50,8 +50,8 @@ PORT = status_port()
 
 @lru_cache(maxsize=1)
 def targets() -> dict:
-    """shared/schemas/targets.json — the latency targets (hard rule 3), read straight from the
-    repo like status_schema() so the front-end stays decoupled from the daemon. The overlay's
+    """Load shared/schemas/targets.json, the latency targets, straight from the repo
+    like status_schema() so the front-end stays decoupled from the daemon. The overlay's
     readout quotes these instead of hardcoding 1500/4000, which used to live in four places."""
     root = Path(__file__).resolve().parent.parent
     raw = (root / "shared" / "schemas" / "targets.json").read_text(encoding="utf-8")
@@ -67,7 +67,7 @@ def known_types() -> frozenset[str]:
 
 @lru_cache(maxsize=1)
 def upstream_types() -> frozenset[str]:
-    """The message types that travel overlay->orchestrator (D24). Contract P is otherwise
+    """The message types that travel overlay->orchestrator. The feed is otherwise
     one-way; today this is exactly {'dismiss'}."""
     return frozenset(status_schema()["upstream"])
 
@@ -80,9 +80,9 @@ def downstream_types() -> frozenset[str]:
 
 
 def m_dismiss() -> dict:
-    """The one upstream message (D24). Lives here rather than in backend/broadcaster.py's m_*
+    """The one upstream message. Lives here rather than in backend/broadcaster.py's m_*
     helpers because the overlay is its only sender, and the front-end imports nothing from
-    backend/ (D21)."""
+    backend/."""
     return {"type": "dismiss"}
 
 
@@ -97,7 +97,7 @@ class Decoder:
     def reset(self) -> None:
         """Drop the partial trailing line — call at the START of a new connection, so a remnant
         left by a connection that died mid-line is not glued onto the next stream's first
-        message (P-03). Keeps `_warned`: 'log each malformed kind once' stays per-process, not
+        message. Keeps `_warned`: 'log each malformed kind once' stays per-process, not
         per-connection."""
         self._buf = b""
 
@@ -130,22 +130,22 @@ class Decoder:
 
 
 # Which 'state' values clear the previous turn's reply and fault. NOT a literal here: the rule
-# is data in status.json (hard rule 3), because it is a fact about the contract that the schema
+# is data in status.json, because it is a fact about the contract that the schema
 # and this reducer had already drifted apart on once — the schema taught the exact opposite of
 # the code for a day.
 #
 # 'speaking'/'error' must never clear: the reply streams in during THINKING and the island flips
 # to SPEAKING while it is read, so clearing there would blank the text as the user starts reading.
 #
-# 'listening' DOES clear (D24), and that is only sound because of a precondition worth stating:
-# **every capture window is now user-initiated.** spec/50 rule 4 binds `listening` to "audio is
+# 'listening' DOES clear, and that is only sound because of a precondition worth stating:
+# **every capture window is now user-initiated.** The contract binds `listening` to "audio is
 # being captured", so it fires whenever the mic opens — which stopped being the same thing as
 # "a new turn began" during the 8 s follow-up window, and a long answer was wiped milliseconds
 # after arriving by the mic opening behind it. The follow-up window is gone; wake-watch and
 # barge-in monitoring publish no 'listening' at all. IF A NON-TURN CAPTURE WINDOW IS EVER
 # REINTRODUCED, THIS LIST MUST CHANGE BACK before it lands — it is one array in status.json.
 #
-# 'idle' is deliberately absent (D24): it means the daemon has finished, not that the island
+# 'idle' is deliberately absent: it means the daemon has finished, not that the island
 # must blank. The overlay decides when to stop showing the answer, since only it knows how much
 # text is left to reveal.
 @lru_cache(maxsize=1)
@@ -153,8 +153,8 @@ def clears_turn() -> frozenset[str]:
     return frozenset(status_schema()["clearsTurn"])
 
 
-# Prior prompts. RAM only — spec/50 forbids writing any of this to disk.
-# NOTHING RENDERS THIS TODAY, deliberately: the ⌄ handle that used to show it was cut (D22),
+# Prior prompts. RAM only — none of this is ever written to disk.
+# NOTHING RENDERS THIS TODAY, deliberately: the ⌄ handle that used to show it was cut,
 # and its replacement — the expanded view — is not built yet. Kept because that view is the
 # agreed home for prior prompts, and because collecting them is ~4 lines with a test, whereas
 # reconstructing a session's prompts after the fact is impossible (nothing is on disk).
@@ -173,19 +173,19 @@ class OverlayState:
     mic: float = 0.0
     error: str = ""
     kind: str = ""
-    # The Contract-T tool running right now, named for a person, or "" between calls (D38).
+    # The Contract-T tool running right now, named for a person, or "" between calls.
     tool: str = ""
-    # The model that produced the reply + the turn's total tokens (D34) — stamped on the 'done'
+    # The model that produced the reply + the turn's total tokens — stamped on the 'done'
     # response message, shown in the peek footer.
     model: str = ""
     tokens: int = 0
-    # Which KIND of turn this was, so the island knows how long to leave it up (D43): "quick" for
+    # Which KIND of turn this was, so the island knows how long to leave it up: "quick" for
     # one that acted, "slow" for one that answered. Never a duration — the seconds are the user's
     # setting. "slow" at rest, so anything unstamped keeps the readable dwell.
     dwell: str = "slow"
-    # Per-turn instrument readings (spec/40 targets: feedback < 1500 ms, first word < 4000 ms).
+    # Per-turn instrument readings (targets: feedback < 1500 ms, first word < 4000 ms).
     # status.json calls these "not user-facing chrome by default", so the overlay only shows
-    # them behind a toggle — but they're shown on screen for the M0 acceptance run.
+    # them behind a toggle — but they're shown on screen for the first live run.
     feedback_ms: float = 0.0
     first_word_ms: float = 0.0
     # Survives the turn clear deliberately: the turn ends, the session's prompts do not.
@@ -204,7 +204,7 @@ class OverlayState:
     def apply(self, msg: dict) -> None:
         # A type-valid message with a required field MISSING must be ignored, never raise. The
         # Decoder validates the message TYPE only (feed()), so a well-typed message with fields
-        # absent CAN reach here — from a future producer, or a non-not-hal process that squats the
+        # absent CAN reach here — from a future producer, or a foreign process that squats the
         # port (broadcaster does not set SO_REUSEADDR on Windows). A raise here aborts the whole
         # read in feed._on_ready, dropping every later message in that batch and leaving the mic
         # timer unarmed. So each branch reads with .get and skips a malformed field rather than
@@ -234,7 +234,7 @@ class OverlayState:
             self.reply += str(msg.get("delta", "") or "")
             self.done = msg.get("done") is True
             if msg.get("model"):
-                self.model = str(msg["model"])   # stamped on the 'done' message (D34)
+                self.model = str(msg["model"])   # stamped on the 'done' message
             if msg.get("tokens") is not None:
                 try:
                     self.tokens = int(msg["tokens"])
@@ -250,9 +250,9 @@ class OverlayState:
             except (TypeError, ValueError):
                 self.mic = 0.0
         elif t == "tool":
-            # The tool currently running, or "" between calls (D38). Latched on the start
+            # The tool currently running, or "" between calls. Latched on the start
             # message and cleared by its own `done`, rather than by the next state change: a
-            # label that outlived the work would claim not-hal was reading your mail when it was
+            # label that outlived the work would claim the app was reading your mail when it was
             # not, which is the one thing this indicator exists to get right.
             self.tool = "" if msg.get("done") is True else (msg.get("label") or msg.get("name") or "")
         elif t == "error":
@@ -274,15 +274,15 @@ def _selfcheck() -> None:
     keeps the reply on screen while it is spoken."""
     assert known_types() == {"state", "transcript", "response", "mic", "tool", "latency", "error",
                              "dismiss"}, sorted(known_types())
-    # Contract P is one-way but for a single verb (D24). A subscriber must not accept it back.
+    # The feed is one-way but for a single verb. A subscriber must not accept it back.
     assert upstream_types() == {"dismiss"}, sorted(upstream_types())
     assert "dismiss" not in downstream_types()
     assert m_dismiss()["type"] == "dismiss"
     assert Decoder().feed(b'{"type":"dismiss"}\n') == [], "the feed must not deliver upstream verbs"
-    # The clearing rule is loaded, not restated — the drift this exists to prevent (S-01) was
+    # The clearing rule is loaded, not restated — the drift this exists to prevent was
     # the schema and this reducer teaching opposite rules for a day.
     assert clears_turn() == {"listening", "thinking"}, sorted(clears_turn())
-    assert "idle" not in clears_turn(), "D24: idle means the daemon is free, not blank the island"
+    assert "idle" not in clears_turn(), "idle means the daemon is free, not blank the island"
     # `booting` (status.json v0.7.0) is a real state that does NOT clear a turn — it only ever
     # precedes the first turn, so there is nothing on screen to clear.
     _states = status_schema()["$defs"]["state"]["properties"]["state"]["enum"]
@@ -292,15 +292,15 @@ def _selfcheck() -> None:
     _boot.apply({"type": "state", "state": "booting"})
     assert _boot.state == "booting", _boot.state
 
-    # Latency targets are loaded, not hardcoded (D25 — they had drifted across four files).
+    # Latency targets are loaded, not hardcoded (they had drifted across four files).
     # The reclassification is DATA the overlay obeys: first_word is 'measured', so the readout
     # must never flag it over-budget; feedback stays a pass/fail 'gate'.
     tg = targets()
-    assert tg["first_word"]["kind"] == "measured", "D25: first_word is a diagnostic, not a gate"
+    assert tg["first_word"]["kind"] == "measured", "first_word is a diagnostic, not a gate"
     assert tg["feedback"]["kind"] == "gate" and tg["feedback"]["ms"] == 1500
     assert {t["kind"] for t in tg.values()} <= {"floor", "gate", "measured"}, "unknown target kind"
 
-    # Transport is loaded from status.json (P-01), and the daemon's port override reaches the
+    # Transport is loaded from status.json, and the daemon's port override reaches the
     # overlay — the split that used to leave a moved daemon talking to a deaf overlay. The
     # daemon (backend/broadcaster.py) reads the SAME key with the same env, so they can't drift.
     tp = status_schema()["transport"]
@@ -328,7 +328,7 @@ def _selfcheck() -> None:
     assert d.feed(b'\n\n') == []                                  # blank lines
     assert d.feed(b'{"type":"state","state":"idle"}\n') == [{"type": "state", "state": "idle"}]
 
-    # a connection that dies mid-line must not glue its remnant onto the next one (P-03)
+    # a connection that dies mid-line must not glue its remnant onto the next one
     d.feed(b'{"type":"mic","level":0.5')                 # daemon dies mid-message
     d.reset()                                            # ...the overlay reconnects
     assert d.feed(b'{"type":"state","state":"idle"}\n') == [{"type": "state", "state": "idle"}], \
@@ -351,7 +351,7 @@ def _selfcheck() -> None:
     assert s.transcript == "what's the weather", "speaking must not clear the prompt"
     s.apply({"type": "response", "done": True, "model": "claude-opus-4-8", "tokens": 421})
     assert s.done and s.model == "claude-opus-4-8" and s.tokens == 421, (s.model, s.tokens)
-    # D43: an unstamped reply is an ANSWER. That default matters more than the stamped case — it
+    # An unstamped reply is an ANSWER. That default matters more than the stamped case — it
     # is what an older daemon, or one that simply forgot, falls back to, and falling back to the
     # SHORT dwell would blink an answer off the screen while it was being read. On its own state
     # object, so this cannot disturb the sequence above.
@@ -366,9 +366,9 @@ def _selfcheck() -> None:
     d.clear_turn()
     assert d.dwell == "slow", "a new turn starts as an answer until told otherwise"
 
-    # Tool activity (D38): named while it runs, gone the moment it stops. The label is latched
+    # Tool activity: named while it runs, gone the moment it stops. The label is latched
     # on the start message and cleared by its OWN done — never by a later state change, because
-    # an indicator that outlived the work would claim not-hal reached your mail when it did not.
+    # an indicator that outlived the work would claim the app reached your mail when it did not.
     s.apply({"type": "tool", "name": "search_email", "label": "Search your inbox for a message"})
     assert s.tool == "Search your inbox for a message", s.tool
     s.apply({"type": "tool", "name": "search_email", "done": True})
@@ -381,7 +381,7 @@ def _selfcheck() -> None:
     # A type-valid but field-INVALID message must be IGNORED, never raise (2026-08-02). The decoder
     # validates the type only, so a well-typed message with fields absent reaches the reducer — and
     # a raise would abort feed._on_ready mid-batch, dropping every later message and leaving the mic
-    # timer unarmed. Reachable from a non-not-hal producer on the port (no SO_REUSEADDR on Windows).
+    # timer unarmed. Reachable from a foreign producer on the port (no SO_REUSEADDR on Windows).
     hardy = OverlayState()
     hardy.apply({"type": "state", "state": "thinking"})
     for junk in ({"type": "tool"}, {"type": "state"}, {"type": "state", "state": ""},
@@ -396,13 +396,13 @@ def _selfcheck() -> None:
     assert hardy.tool == "search_email", "a string 'false' done must not clear a live indicator"
     hardy.apply({"type": "response", "delta": "hi", "done": "false"})
     assert hardy.done is False, "done parses strictly — the string 'false' is not True"
-    # ...and it must survive `idle` too (D24). `idle` now means the DAEMON has finished, not
+    # ...and it must survive `idle` too. `idle` now means the DAEMON has finished, not
     # "blank the island": the overlay owns that, because only it knows how much text is left to
     # reveal. While the daemon owned it, it was timing a reveal it could not see, and long
     # answers went dark mid-sentence.
     s.apply({"type": "state", "state": "idle"})
-    assert s.reply == "It's clear in Tokyo.", "idle must not wipe the answer (D24)"
-    assert s.transcript == "what's the weather", "idle must not wipe the prompt (D24)"
+    assert s.reply == "It's clear in Tokyo.", "idle must not wipe the answer"
+    assert s.transcript == "what's the weather", "idle must not wipe the prompt"
     # The NEXT capture window is what ends a turn. `listening` clearing is what makes it
     # impossible to draw the mic bars over a stale answer — the barge-in bug of 2026-07-22,
     # which existed because that clear lived in one caller instead of in the state itself.
@@ -431,9 +431,9 @@ def _selfcheck() -> None:
     assert (s.feedback_ms, s.first_word_ms) == (900.0, 3400.0)
     s.apply({"type": "state", "state": "idle"})
     assert s.state == "idle"
-    assert s.error == "no kind given", "idle must not wipe a fault (D24)"
+    assert s.error == "no kind given", "idle must not wipe a fault"
     assert (s.feedback_ms, s.first_word_ms) == (900.0, 3400.0), \
-        "idle must not reset the instrument — the readout is still on screen (D24)"
+        "idle must not reset the instrument — the readout is still on screen"
     s.apply({"type": "state", "state": "listening"})              # the next turn opens
     assert s.error == "" and s.kind == ""
     assert (s.feedback_ms, s.first_word_ms) == (0.0, 0.0), "latency must reset with the turn"
@@ -444,7 +444,7 @@ def _selfcheck() -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Teleprompter wire decoder — Contract P (Track P)")
+    ap = argparse.ArgumentParser(description="Decode status messages from the daemon")
     ap.add_argument("--selfcheck", action="store_true",
                     help="verify framing + reducer without Qt or sockets, then exit")
     args = ap.parse_args()

@@ -1,7 +1,7 @@
 {
-  "$comment": "open_app's OPTIONAL overrides (Contract T, spec/30). not-hal asks Windows for this PC's own app list, so anything the Start Menu shows needs no entry here — this table is only for the ones the lookup gets wrong, or that Windows does not list at all. Checked BEFORE the lookup, so an entry always wins. An empty list is a no-op.",
+  "$comment": "open_app's OPTIONAL overrides (Contract T). The app asks Windows for this PC's own app list, so anything the Start Menu shows needs no entry here — this table is only for the ones the lookup gets wrong, or that Windows does not list at all. Checked BEFORE the lookup, so an entry always wins. An empty list is a no-op.",
   "$comment_fields": "`say` is what a person calls it out loud; `open` is either the name of another app in the Start Menu list or a full path to anything Windows can launch. Matching folds case, spaces and punctuation away, so 'VS Code' and 'vscode' are the same key. Only the USER writes this file — the model supplies `say` and nothing else — which is why a full path is safe here and would not be as a tool parameter.",
-  "$comment_ui": "Hand-edited for now, as word_replacements.json is; a curating UI is a later lift (spec/70 §3).",
+  "$comment_ui": "Hand-edited for now, as word_replacements.json is; a curating UI is a later lift.",
   "version": "0.1.0",
   "aliases": []
 }

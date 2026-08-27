@@ -1,11 +1,11 @@
-// PeekPanel.qml — the expanded-view "peek" content (D27, Track P). The current turn read in
+// PeekPanel.qml: the expanded-view "peek" content. The current turn read in
 // full: the prompt pinned and collapsible past two lines, the reply scrolling under a top/bottom
 // fade, and Copy / Save actions. Overlay.qml grows the island to peek size and fades this in.
 //
 // Deliberately dumb: it renders `prompt`/`reply` and emits intent. The clipboard write and the
 // save dialog belong to the host process (__main__.py) — a QML file has no business touching
 // either, and keeping them out keeps this headless-testable. Mirrors sandbox/teleprompter-
-// expanded-mockup.html, which Thomas signed off on.
+// expanded-mockup.html.
 import QtQuick
 import QtQuick.Controls.Basic                    // ScrollBar (attached) for the shared ThemedScrollBar
 import frontend                              // Theme — the design tokens
@@ -17,9 +17,9 @@ Item {
 
     property string prompt: ""
     property string reply: ""
-    property bool generating: false          // the reply is still streaming (mid-stream peek, D27)
-    property string model: ""                // the model that produced the reply (footer, D34)
-    property int tokens: 0                    // the turn's total input+output tokens (footer, D34)
+    property bool generating: false          // the reply is still streaming (mid-stream peek)
+    property string model: ""                // the model that produced the reply (footer)
+    property int tokens: 0                    // the turn's total input+output tokens (footer)
     property string faceFamily: ""           // handed in by Overlay. DIFFERENT name from the
                                              // `fontFamily` context property on purpose: a property
                                              // named fontFamily makes `fontFamily: fontFamily`
@@ -207,7 +207,7 @@ Item {
         }
     }
 
-    // "still generating" cue — mid-stream peek is allowed (D27), so tell the reader more is coming
+    // "still generating" cue — mid-stream peek is allowed, so tell the reader more is coming
     // (a copy right now would be partial). Sits bottom-left beside the actions, pulsing softly.
     Text {
         id: generatingCue
@@ -225,7 +225,7 @@ Item {
         }
     }
 
-    // The model that produced the reply + the turn's token count (D34, variant A): a quiet mono line
+    // The model that produced the reply + the turn's token count: a quiet mono line
     // bottom-left, opposite Copy/Save, once the reply has settled (not while it is still streaming).
     Text {
         id: modelLine

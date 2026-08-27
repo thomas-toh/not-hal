@@ -1,5 +1,5 @@
-"""Model adapters (Contract B, spec/20). One async interface; every model plugs in
-behind it. B1 (Claude API) is the M0 build (step 5); B2/B3 land at M2/M4."""
+"""Model adapters (Contract B). One async interface; every model plugs in
+behind it. B1 (Claude API) came first; B2 is the OpenAI-compatible adapter; B3 is for adapters that run their own tools."""
 from .base import (
     ModelAdapter,
     ModelEvent,

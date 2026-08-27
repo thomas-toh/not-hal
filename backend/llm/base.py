@@ -1,4 +1,4 @@
-"""Contract B (spec/20): the one async interface every model plugs in behind.
+"""Contract B: the one async interface every model plugs in behind.
 
 Internal message shape is the chat-completions convention (system/user/assistant/tool,
 JSON-schema tools). Adapters MUST stream (no buffer-then-return) and MUST surface tool
@@ -17,7 +17,7 @@ def ssl_context():
 
     Deliberately provider-agnostic and deliberately NOT in an adapter: this describes this
     computer, not Anthropic. Every cloud SDK we are likely to sit behind Contract B —
-    Anthropic, Groq (dictation cleanup, D19), OpenAI — is built on httpx, and httpx rebuilds
+    Anthropic, Groq (dictation cleanup), OpenAI — is built on httpx, and httpx rebuilds
     this per client with no memoisation of its own. Measured on the PC 2026-07-22: ~190 ms of
     main-thread CPU each time, re-reading the CA bundle from disk, burned on the
     end-of-speech -> first-word path before a single packet moves. Reused, it is ~0.2 ms.
@@ -31,27 +31,27 @@ def ssl_context():
     return httpx.create_ssl_context()
 
 # A Contract T registry entry — the shape of an item in shared/schemas/tools.json,
-# loaded (hard rule 3), never redefined here. M0 passes an empty list.
+# loaded (the schema is the source of truth), never redefined here. The first build passes an empty list.
 #
 # Each adapter translates these into its provider's wire format itself (B1 -> `input_schema`,
-# B2 -> an OpenAI function object), and strips `tier` — a safety field that is not-hal's business
+# B2 -> an OpenAI function object), and strips `tier` — a safety field that is the app's business
 # and never leaves the machine. Translation sits in the adapter for the same reason error
-# mapping does: it IS the provider's format. Recorded in spec/20.
+# mapping does: it IS the provider's format.
 ToolSpec = dict[str, Any]
 
 
-# Spoken replies stay short. The ≤2-sentence narration rule is the orchestrator's job (step 6);
-# this default just makes a standalone console test sound like the voice loop. Register per
-# spec/40 (decided 2026-07-13): impassive system voice.
+# Spoken replies stay short. The ≤2-sentence narration rule is the orchestrator's job;
+# this default just makes a standalone console test sound like the voice loop. The register
+# (decided 2026-07-13) is an impassive system voice.
 #
-# Here rather than in an adapter because it describes not-hal, not a provider — and because M0.5's
+# Here rather than in an adapter because it describes the app, not a provider — and because a later
 # versioned persona has to replace it in ONE place. It briefly lived in claude.py; the moment a
 # second adapter existed that became two copies to keep in step.
 # The persona for a spoken turn. It deliberately does NOT enumerate tools: the model learns what
 # it can do from the tool list the adapter puts on the wire (Contract T, filtered to what this
 # platform implements), so the prompt fixes only the register and the honesty rule. A per-turn
 # capability CLAUSE derived from that filtered list — the persona narrating its own reach without
-# going stale — is the M0.5 persona work (decided 2026-07-13; STATE, Track B M0.5), still owed.
+# going stale — is later persona work, still owed.
 DEFAULT_SYSTEM = (
     "You are this machine's system voice. Your words are read aloud: answer in "
     "one or two spoken sentences unless asked for more; no markdown, lists, code, or "
@@ -75,7 +75,7 @@ DEFAULT_SYSTEM = (
 # depict a fact the model cannot know without a tool.
 
 def profile_note() -> str:
-    """The General > Profile rows (spec/70) as one clause for the system prompt, or "" if the
+    """The General > Profile rows as one clause for the system prompt, or "" if the
     user has filled none in — so an untouched profile leaves DEFAULT_SYSTEM byte-identical.
 
     Read fresh per turn, like every other setting, so an edit lands on the next utterance.
@@ -109,15 +109,15 @@ def profile_note() -> str:
     return (" " + " ".join(parts)) if parts else ""
 
 
-# ponytail: short cap — spoken turns are brief and long answers are held, not spoken
-# (spec/40). Bump if a legitimate turn ever truncates. The default for a spoken `converse`;
+# ponytail: short cap — spoken turns are brief and long answers are held, not spoken.
+# Bump if a legitimate turn ever truncates. The default for a spoken `converse`;
 # a `transform` call raises it per-turn (a dictation may run long) via Session.max_tokens.
 MAX_TOKENS = 1024
 
-# The guardrail for `transform` (spec/20). Provider-agnostic, like DEFAULT_SYSTEM: the *task*
+# The guardrail for `transform`. Provider-agnostic, like DEFAULT_SYSTEM: the *task*
 # (clean this transcript / rewrite per this instruction) is the caller's `instructions`; this
 # fixes the invariant that makes it a transformer and not an assistant — "transform, never
-# answer" (D12). Kept beside DEFAULT_SYSTEM so both persona strings live in one place.
+# answer". Kept beside DEFAULT_SYSTEM so both persona strings live in one place.
 TRANSFORM_SYSTEM = (
     "You transform text exactly as instructed and output ONLY the result. You are a text "
     "transformer, not an assistant: never answer, explain, comment, apologise, or add anything "
@@ -133,7 +133,7 @@ class Session:
     messages the orchestrator threads through (follow-up window, step 6)."""
 
     id: str
-    local_only: bool = False  # spec/20: utterance must not leave the machine -> block B1
+    local_only: bool = False  # utterance must not leave the machine -> block B1
     system: str | None = None  # None -> adapter's default voice prompt
     history: list[dict[str, Any]] = field(default_factory=list)
     # Per-call generation overrides (None -> the adapter's default). max_tokens lets a `transform`
@@ -148,10 +148,10 @@ class Session:
     # Anthropic uses a separate block), so translating it is the adapter's job. An adapter with
     # no way to say it sends nothing and the model may think — a degradation, not an error.
     thinking: bool | None = None
-    # ponytail: `prefs` (spec/20) deferred until something reads it.
+    # ponytail: `prefs` deferred until something reads it.
 
 
-# --- ModelEvent = TextDelta | ToolCall | ToolResult | Done | Error (spec/20) ---
+# --- ModelEvent = TextDelta | ToolCall | ToolResult | Done | Error ---
 
 
 @dataclass(frozen=True)
@@ -168,7 +168,7 @@ class ToolCall:
 
 @dataclass(frozen=True)
 class ToolResult:
-    # Emitted only by adapters that run their own tools (B3, M4). B1 never emits this;
+    # Emitted only by adapters that run their own tools (B3, later). B1 never emits this;
     # the orchestrator executes ToolCalls through Contract T and feeds results back.
     id: str
     content: Any
@@ -181,7 +181,7 @@ class Done:
 
 @dataclass(frozen=True)
 class Error:
-    # kind is one of the shared set (spec/20): auth | rate_limit | context |
+    # kind is one of the shared set: auth | rate_limit | context |
     # unavailable | malformed_tool_call | unknown.
     kind: str
     detail: str
@@ -201,7 +201,7 @@ class ModelAdapter(Protocol):
         """Stream ModelEvents for one turn. Implemented as an async generator, so the
         orchestrator drives it with `async for ev in model.converse(...)`.
 
-        ONE LOOP PER ADAPTER (spec/20). Every call for the life of an adapter instance is
+        ONE LOOP PER ADAPTER. Every call for the life of an adapter instance is
         awaited on the same event loop, so an adapter MAY build a client, connection pool or
         session once and keep it across turns. This is a guarantee the orchestrator owes the
         adapter, not the other way round: it used to run each turn in its own `asyncio.run()`,
@@ -222,7 +222,7 @@ async def transform(
     temperature: float = 0.0,
     max_tokens: int | None = None,
 ) -> tuple[str, Error | None]:
-    """The second Contract B verb (spec/20): rewrite `text` per `instructions`, never answer it.
+    """The second Contract B verb: rewrite `text` per `instructions`, never answer it.
 
     Returns `(result, error)`. On success `error` is None; on any provider failure the result is
     "" and `error` is the same `Error` `converse` would have surfaced (auth / unavailable / …),
@@ -233,10 +233,10 @@ async def transform(
     the whole answer buffered — so it reuses every adapter's streaming, error mapping, one-loop
     and deterministic-close guarantees for free, and works against Groq, Claude or a local model
     identically. That agnosticism is the point: the caller picks which model cleans (Groq for
-    dictation, D15/S-06; a local model for `--clean-prompts`); this code privileges none.
+    dictation; a local model for `--clean-prompts`); this code privileges none.
 
     It does NOT force `local_only`: the caller chose the provider, and forcing privacy here would
-    make the S-06 decision (cloud Groq for dictation) impossible. Privacy is the caller's choice
+    make the choice of cloud Groq for dictation impossible. Privacy is the caller's choice
     of model.
     """
     if max_tokens is None:

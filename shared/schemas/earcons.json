@@ -1,9 +1,9 @@
 {
-  "$comment": "Earcon vocabulary — SINGLE SOURCE OF TRUTH for ids, meanings and maxMs. Since D28 the set is three device pings (down from seven): the screen carries listening/thinking/answer/tool state (D23/D25), so most earcons were redundant with something already visible. Designed WAVs live in backend/assets/earcons/ (id.wav), loaded by backend/audio/speak.py via the stdlib wave module — no audio-codec dependency. maxMs is the ceiling the selfcheck holds each WAV under (a wrong/oversized file trips it). WHEN each fires, and WHETHER it plays at all (the 'Pings' toggle, default on), is the orchestrator's job — see spec/40 § Voice out.",
+  "$comment": "The earcon vocabulary, the SINGLE SOURCE OF TRUTH for ids, meanings and maxMs. The set is three device pings (down from seven): the screen carries listening/thinking/answer/tool state, so most earcons were redundant with something already visible. Designed WAVs live in backend/assets/earcons/ (id.wav), loaded by backend/audio/speak.py via the stdlib wave module — no audio-codec dependency. maxMs is the ceiling the selfcheck holds each WAV under (a wrong/oversized file trips it). WHEN each fires, and WHETHER it plays at all (the 'Pings' toggle, default on), is the orchestrator's job.",
   "version": "0.4.0",
   "earcons": [
     { "id": "listening", "meaning": "a capture opened — wake word heard or ask-hotkey pressed. The audible 'I heard you'; the ONSET is latency-bounded (< 300 ms), the length is not (it rings out over the next phase)", "maxMs": 1000 },
-    { "id": "success",   "meaning": "a result landed well: a Tier-2 tool action completed, or a long answer is ready and shown on the Teleprompter. Later (M1): a named timer fired", "maxMs": 900 },
-    { "id": "failure",   "meaning": "something needs your view: a tool action failed, the pipeline broke (model unreachable, STT failed, nothing transcribed), or a Tier-3 action is proposed and awaits your keypress / spoken 'confirm' (D26)", "maxMs": 2100 }
+    { "id": "success",   "meaning": "a result landed well: a Tier-2 tool action completed, or a long answer is ready and shown on the Teleprompter. Later (unbuilt): a named timer fired", "maxMs": 900 },
+    { "id": "failure",   "meaning": "something needs your view: a tool action failed, the pipeline broke (model unreachable, STT failed, nothing transcribed), or a Tier-3 action is proposed and awaits your keypress / spoken 'confirm'", "maxMs": 2100 }
   ]
 }

@@ -101,7 +101,7 @@ def main() -> int:
     assert float(win.property("entrance")) < 0.01, "idle should leave the island faded out"
     model.apply({"type": "state", "state": "thinking"})
     # Sample the WHOLE fade rather than one fixed-time reading. A single _pump(90) of a 220 ms
-    # fade reads ~0.79 on this box, but on a slow CI runner (X-01) that pump can overrun the
+    # fade reads ~0.79 on this machine, but on a slow CI runner that pump can overrun the
     # fade and read ~1.0 — a false failure. Catching ANY mid-range frame proves it animated
     # through the middle instead of snapping, and is robust to how fast the runner is.
     saw_mid = False
@@ -185,7 +185,7 @@ def main() -> int:
         f"{win.property('textW'):.0f}px column — a long token is overhanging the island")
 
     # --- the latency instrument must never sit on top of the reply it is timing ---
-    # Both readings show at once during the acceptance run, which is the case a flat 96px
+    # Both readings can show at once on a first run, which is the case a flat 96px
     # gutter did not cover. Checked at absurd readings so the guarantee is not luck.
     latency = win.findChild(QObject, "latency")
     assert latency is not None, "Overlay.qml lost the latency objectName"
@@ -200,7 +200,7 @@ def main() -> int:
         f"latency readout starts at x={latency.property('x'):.0f} but the reply runs to "
         f"{text_right:.0f} — the instrument overlaps the text")
 
-    # --- the reclassification is DATA the renderer obeys (D25) ---
+    # --- the reclassification is DATA the renderer obeys ---
     # first_word is 'measured', not a gate, so a first-word reading way over target must NOT
     # colour the readout — while a feedback reading over its gate MUST. If someone flips the
     # colour expression back to treating first_word as a gate, the first assert fails.
@@ -214,9 +214,9 @@ def main() -> int:
     _pump(app, 60)
     hot = latency.property("color")
     assert calm != hot, ("first_word over target coloured the readout — it is 'measured', "
-                         "only the feedback GATE may (D25)")
+                         "only the feedback GATE may")
 
-    # --- the reply must not cut the prompt off mid-reveal (D24) ---
+    # --- the reply must not cut the prompt off mid-reveal ---
     # The live defect: `bodyText` flipped to the reply on the FIRST model delta, the prefix
     # test below it read the new string as "not a continuation" and reset the typewriter to
     # zero — so a prompt past ~11 words lost its tail on every warm turn. Reproduce exactly
@@ -246,7 +246,7 @@ def main() -> int:
     assert body.property("text").startswith("There"), \
         "the reply never took over once the prompt had had its turn"
 
-    # --- the island hides ITSELF, and never while text is still appearing (D24) ---
+    # --- the island hides ITSELF, and never while text is still appearing ---
     # The daemon owns none of this now. It publishes `idle` when IT is finished; the clock
     # that matters starts when the reveal does.
     dwell = win.findChild(QObject, "answerDwell")
@@ -267,7 +267,7 @@ def main() -> int:
         "the island never hid itself after its dwell"
     assert float(win.property("entrance")) < 0.99, "the island did not begin fading out"
 
-    # --- two dwells, chosen by the daemon, timed by the user (D43) ---
+    # --- two dwells, chosen by the daemon, timed by the user ---
     # A turn that ACTED has nothing to read, so it goes quickly; one that ANSWERED stays long
     # enough to walk back to the desk. The daemon sends the word, the seconds are the setting.
     schema = settings.schema()["settings"]
@@ -309,7 +309,7 @@ def main() -> int:
     cfg.set("dwell_slow", was_s)
     _pump(app, 60)
 
-    # --- Esc dismisses locally, without waiting for the daemon (D24) ---
+    # --- Esc dismisses locally, without waiting for the daemon ---
     model.apply({"type": "state", "state": "thinking"})
     model.apply({"type": "transcript", "text": "what's the weather"})
     _pump(app, 200)
@@ -323,7 +323,7 @@ def main() -> int:
 
     # ...and when a NEW turn re-opens the pill, it must appear at the CORRECT width, not fade in
     # at the last turn's width and animate down (the wide-then-shrink bug). Since idle no longer
-    # clears the turn (D24), animW sits at the wide value while hidden; the fix snaps size while
+    # clears the turn, animW sits at the wide value while hidden; the fix snaps size while
     # the pill is not fully shown, so it is right the instant it re-appears — for ANY re-open
     # path, not just this one.
     deadline2 = time.monotonic() + 1.0
@@ -392,7 +392,7 @@ def main() -> int:
     # window move racing a native resize looked like (the pill contracted faster on the left).
     # The containment assert covers the other half: the silhouette is drawn at animH, so if
     # that ever exceeded the frame its bottom corners would be clipped away mid-growth.
-    # `listening` is what contracts the island (D24): opening a capture window IS the clear
+    # `listening` is what contracts the island: opening a capture window IS the clear
     # (status.json `clearsTurn`), so the wide text pill drops to the compact wave pill. This
     # assertion has now been round the houses — `listening`, then `idle` when the follow-up
     # window made an open mic mean something else, and back again now that every capture is
@@ -425,7 +425,7 @@ def main() -> int:
           f"worst centre drift {drift:.3f}px")
     assert drift < 0.5, f"the island's two edges moved at different rates (drift {drift:.2f}px)"
 
-    # --- U-01: the native filter routes WM_SETTINGCHANGE to the reduced-motion re-query ---
+    # --- the native filter routes WM_SETTINGCHANGE to the reduced-motion re-query ---
     # Pure Win32 message dispatch, no window needed. Proves the live-update wiring survives an
     # edit that (e.g.) re-adds an `if not armed: return` guard and silently kills settings.
     # Windows-only: `ctypes.wintypes` RAISES on import elsewhere, so an unguarded import here
@@ -448,7 +448,7 @@ def main() -> int:
     else:
         print(f"SKIPPED on {sys.platform}: WM_SETTINGCHANGE dispatch (Win32-only)")
 
-    # --- expanded view / peek (D27) ---
+    # --- expanded view / peek ---
     # A settled answer is peekable; peeking grows the island to the peek size, pauses the dwell,
     # and Esc collapses the peek BEFORE it would dismiss the island.
     dwell.setProperty("interval", 20000)                       # don't let it fire during the checks
@@ -475,7 +475,7 @@ def main() -> int:
     peek_w = float(win.property("peekW"))
     peek_min, peek_max = float(win.property("peekMinH")), float(win.property("peekMaxH"))
     win.setProperty("peeking", True)
-    # The peek REVEALS (clip), never REFLOWS (D27): the reply viewport is pinned to the FINAL height
+    # The peek REVEALS (clip), never REFLOWS: the reply viewport is pinned to the FINAL height
     # (bodyHeight) from the first frame, so the fade bars never flash mid-grow. Capture it while the
     # grow is still animating; re-tie the layout to the animating height and this collapses toward 0.
     _pump(app, 40)                                             # ~2 frames — the grow is NOT settled yet
@@ -495,14 +495,14 @@ def main() -> int:
     assert win.property("showing"), "the island must stay showing while peeked"
     assert not dwell.property("running"), "the dwell must pause while peeking"
 
-    # Bug fix (D27): a new capture clears the reply -> not peekable -> the peek must let go, so the
+    # Bug fix: a new capture clears the reply -> not peekable -> the peek must let go, so the
     # island returns to the compact view instead of a stuck, large, empty box mid-turn.
     model.apply({"type": "state", "state": "listening"})       # the hotkey / a new turn opens the mic
     _pump(app, 100)
     assert not win.property("peekable"), "listening clears the reply, so it is no longer peekable"
     assert not win.property("peeking"), "a new capture must drop out of the peek"
 
-    # Esc from a peek dismisses the island OUTRIGHT (D27) — not back to the compact 3-line view,
+    # Esc from a peek dismisses the island OUTRIGHT — not back to the compact 3-line view,
     # where the whole answer can't be read.
     model.apply({"type": "state", "state": "thinking"})
     model.apply({"type": "transcript", "text": "and again"})
@@ -525,9 +525,9 @@ def main() -> int:
         _pump(app, 20)
     assert not win.property("visible"), "the island never finished fading out after Esc"
     assert not win.property("peeking"), \
-        "peeking must reset only once fully hidden, so the dismiss fades at peek size (no shrink, D27)"
+        "peeking must reset only once fully hidden, so the dismiss fades at peek size (no shrink)"
 
-    # --- IslandHitTest: nothing to peek -> the whole island is click-through (D27) ---
+    # --- IslandHitTest: nothing to peek -> the whole island is click-through ---
     # The load-bearing gate: with no answer to peek, the island must NEVER eat a click — it sits
     # over a live app's tab strip. Testable headless because the not-peekable branch returns before
     # any GetWindowRect; a tiny stub stands in for the QML window.
@@ -559,7 +559,7 @@ def main() -> int:
     else:
         print(f"SKIPPED on {sys.platform}: IslandHitTest click-through (Win32-only)")
 
-    # --- dictation states (D2): the island is a pure status indicator, no reply body ---
+    # --- dictation states: the island is a pure status indicator, no reply body ---
     # Recording reuses `listening` (covered above); these are the three states after it. The
     # daemon publishes transcribing -> transforming -> pasted -> idle; the overlay shows a steady
     # status word for the first two, then a latched "Pasted ✓" beat, then hides itself. `idle`

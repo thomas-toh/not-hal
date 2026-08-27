@@ -1,4 +1,4 @@
-"""The settings window's offline check (D29) — the sibling of overlay_check.
+"""The settings window's offline check, the sibling of overlay_check.
 
     python -m frontend.settings_check
 
@@ -45,7 +45,7 @@ HERE = Path(__file__).resolve().parent
 
 
 def check_icon_font() -> None:
-    """Every icon in the app is one Lucide glyph (D29). Three ways that fails silently, so three
+    """Every icon in the app is one Lucide glyph. Three ways that fails silently, so three
     assertions: the bundled file goes missing or is renamed, a codepoint in `Theme.ico` has no
     glyph behind it (tofu, with no QML warning), or an icon creeps back in as an SVG.
     """
@@ -68,8 +68,8 @@ def check_icon_font() -> None:
     tofu = [name for name, cp in icons if not raw.supportsCharacter(int(cp, 16))]
     assert not tofu, f"{len(tofu)} icon(s) have no glyph in the font: {tofu}"
 
-    # Icons are font glyphs, never SVG (Thomas). A `d: "M…"` fed to a Glyph, or an Image pointed at
-    # an icons/*.svg, both render with no QML warning. `not-hal-mark.svg` is the project's own mark
+    # Icons are font glyphs, never SVG. A `d: "M…"` fed to a Glyph, or an Image pointed at an
+    # icons/*.svg, both render with no QML warning. `not-hal-mark.svg` is the project's own mark
     # rather than an icon, and the Mark logo uses `PathSvg { path: … }`, so neither trips this.
     for qml in ("SettingsWindow.qml", "PeekPanel.qml", "Overlay.qml"):
         src = (HERE / qml).read_text(encoding="utf-8")
@@ -84,7 +84,7 @@ def check_al_turn(player, overlay, settle) -> None:
     thing that looks right in a diff and is wrong on screen — and because two of its rules exist
     only to survive orderings a still frame never shows:
 
-      * with TTS off (D23, the default) the daemon NEVER publishes `speaking`, so Al's
+      * with TTS off (the default) the daemon NEVER publishes `speaking`, so Al's
         `speaking` has to be driven by the reply, not by the feed's state word;
       * the island's typewriter and the daemon's stream finish at different times, in either
         order, and Al must not flicker out of `speaking` in the gap.
@@ -97,9 +97,9 @@ def check_al_turn(player, overlay, settle) -> None:
     overlay.revealing = False
     assert phase() == "idle", phase()
     overlay.apply({"type": "state", "state": "listening"})
-    assert phase() == "listening", "the mic is open — spec/50 rule 4, never inferred"
+    assert phase() == "listening", "the mic is open: listening is never inferred"
     overlay.apply({"type": "state", "state": "thinking"})
-    assert phase() == "working", "composing an answer draws the typewriter (Thomas)"
+    assert phase() == "working", "composing an answer draws the typewriter"
     overlay.apply({"type": "transcript", "text": "when is my meeting", "final": True})
     assert phase() == "working", "the prompt showing is not yet an answer"
 
@@ -124,12 +124,12 @@ def check_al_turn(player, overlay, settle) -> None:
     overlay.apply({"type": "response", "delta": " past two.", "done": True})
     assert phase() == "done", phase()
 
-    # A new capture clears the turn (D24 clearsTurn), which must return her to the mic.
+    # A new capture clears the turn (clearsTurn), which must return her to the mic.
     overlay.apply({"type": "state", "state": "listening"})
     assert phase() == "listening", phase()
 
-    # DICTATION (Thomas): the transcribe and tidy passes are the machine chewing, so they draw the
-    # same typewriter as composing; the paste landing gets the same sparkle as a finished answer. All
+    # DICTATION: the transcribe and tidy passes are the machine chewing, so they draw the same
+    # typewriter as composing; the paste landing gets the same sparkle as a finished answer. All
     # three fell through to `idle` before — Al resting while the island said "Transcribing…".
     overlay.feed_lost()
     for state in ("transcribing", "transforming"):
@@ -149,7 +149,7 @@ def check_al_turn(player, overlay, settle) -> None:
     assert phase() == "done", phase()
     overlay.apply({"type": "error", "message": "I could not reach the model.", "kind": "network"})
     assert phase() == "error", f"a fault must outrank the reply, got {phase()}"
-    # ...and the mic still wins over a fault (spec/50 rule 4 is binding).
+    # ...and the mic still wins over a fault (the open-mic rule holds without exception).
     overlay.apply({"type": "state", "state": "listening"})
     assert phase() == "listening", f"an open mic must outrank a stale fault, got {phase()}"
 
@@ -208,8 +208,8 @@ def check_recorder(engine, app) -> None:
 
 
 def check_new_fixes(win, cfg, settle) -> None:
-    """Guards for the 2026-08-02 adversarial-fix batch (the D40 follow-up). Each is written to FAIL
-    when its fix is reverted — a warning-only gate cannot see any of these."""
+    """Guards for the 2026-08-02 fix batch. Each is written to FAIL when its fix is reverted —
+    a warning-only gate cannot see any of these."""
     import time
 
     from backend.llm import providers as _providers
@@ -233,7 +233,7 @@ def check_new_fixes(win, cfg, settle) -> None:
         assert cfg.meta[k]["type"] == "provider", \
             f"CleanupRow is rendering a {cfg.meta[k]['type']} setting ({k!r}); route it by type"
 
-    # M1 — a LOCAL provider must be addable end to end through the real controls. Local Add now
+    # A LOCAL provider must be addable end to end through the real controls. Local Add now
     # requires a successful trial exactly as cloud does (uniform canCommit), where before it was
     # committable on an endpoint alone yet could never populate a model, and so was a dead end.
     win.setProperty("addEditing", False)
@@ -292,7 +292,7 @@ def check_new_fixes(win, cfg, settle) -> None:
     assert win.property("addKey") == "", "hiding the window must clear the typed key (m0)"
 
     # #38 — Done with a typed-but-untested key keeps the sheet OPEN rather than dropping the key
-    # silently. (Edit's Done is always enabled, which is the shape the finding hit.)
+    # silently. (Edit's Done is always enabled, which is the shape the bug took.)
     win.metaObject().invokeMethod(win, "openAdd")
     settle()
     win.setProperty("addKind", "cloud")
@@ -320,10 +320,11 @@ def check() -> None:
     tmp = tempfile.mkdtemp(prefix="nothal-settings-check-")
     os.environ["NOTHAL_SETTINGS"] = str(Path(tmp) / "settings.json")
 
-    # OFFLINE by construction (finding, 2026-08-02): the addProvider calls below auto-refresh, which
+    # OFFLINE by construction (2026-08-02): the addProvider calls below auto-refresh, which
     # without this would read the REAL credential store and issue authenticated GETs to the cloud
-    # providers on the dev box — the check is documented as needing "no credential store". probe's
-    # network behaviour is providers' own selfcheck; here it returns a deterministic offline answer.
+    # providers on the development machine — the check is documented as needing "no credential
+    # store". probe's network behaviour is providers' own selfcheck; here it returns a
+    # deterministic offline answer.
     from backend.llm import providers as _providers
     _providers.probe = lambda pid, endpoint=None, timeout=None, key=None: ([], "unreachable")
 
@@ -343,7 +344,7 @@ def check() -> None:
     # The rule that matters is narrower: nothing that removes a safety gate starts removed.
     assert schema["settings"]["skip_permissions"]["default"] is False, (
         "a permission bypass must never default on")
-    # Connectors (D38). The card is generated from both schemas at once, so the failure to guard
+    # Connectors. The card is generated from both schemas at once, so the failure to guard
     # against is a mismatch BETWEEN them: a tool naming a connector no setting declares fails
     # closed in backend/tools.py, which is safe but invisible — the tool would simply never be
     # offered and no warning would say why.
@@ -360,11 +361,11 @@ def check() -> None:
             continue
         assert s["type"] == "bool" and s["pane"] == "connectors", key
         assert s.get("help"), f"{key}: a connector card with no 'Reaches' text is consent to nothing"
-        # D38's default posture, stated as a rule rather than trusted per entry: consent to
+        # The default posture, stated as a rule rather than trusted per entry: consent to
         # anything personal is asked for, never assumed. System is the one exception — the time
         # and the battery are not personal data.
         assert s["default"] is (key == "connector_system"), (
-            f"{key}: only the System connector may default on (D38)")
+            f"{key}: only the System connector may default on")
 
     for pid, p in schema["providers"].items():
         assert p.get("name"), f"{pid}: a provider with no name renders blank"
@@ -387,7 +388,7 @@ def check() -> None:
     engine.rootContext().setContextProperty("overlay", overlay)
     engine.rootContext().setContextProperty("fontFamily", "Arial")
     engine.rootContext().setContextProperty("reducedMotion", False)
-    # Al in the top bar (Track P): the same provider + player the real host wires, so the
+    # Al in the top bar: the same provider + player the real host wires, so the
     # window's Al row renders here instead of throwing an unknown-source / undefined warning.
     engine.addImageProvider("al", al.AlImageProvider())
     al_player = al.QmlAl(model=overlay)
@@ -396,7 +397,7 @@ def check() -> None:
     warnings: list[str] = []
     engine.warnings.connect(lambda ws: warnings.extend(w.toString() for w in ws))
 
-    # Widen the gate to RUNTIME binding errors (finding, 2026-08-02). `engine.warnings` catches
+    # Widen the gate to RUNTIME binding errors (2026-08-02). `engine.warnings` catches
     # load-time warnings but NOT a TypeError/ReferenceError thrown when a binding RE-EVALUATES in a
     # state the check drives — exactly the class this check most needs to catch: an unguarded
     # `overlay.state` read null and printed a TypeError on screen while the gate said "no warnings".
@@ -427,8 +428,8 @@ def check() -> None:
     assert cfg.models == {}, "the check must start from an empty profile"
     # Every section, so every binding in each view is evaluated — a throw in Connectors or
     # Config would otherwise hide until that section is shown.
-    # Every pane the schema declares — the sidebar and this property share one vocabulary since
-    # D40, so a pane added to the JSON is walked here without touching this list.
+    # Every pane the schema declares — the sidebar and this property share one vocabulary, so a
+    # pane added to the JSON is walked here without touching this list.
     for pane in pane_ids:
         win.setProperty("section", pane)
         settle()
@@ -468,7 +469,7 @@ def check() -> None:
         declared = (card_.get("capabilities") or {}).get("thinking")
         assert not declared, (
             f"{pid} declares capabilities.thinking, but nothing in backend/ reads it — either wire "
-            f"a consumer or drop the declaration (spec/20; the `context` precedent)")
+            f"a consumer or drop the declaration (the `context` precedent)")
 
     cfg.addProvider("ollama")                      # local: the second group appears
     settle()
@@ -518,9 +519,9 @@ def check() -> None:
     assert set(cfg.keys) == set(cfg.catalog), "every provider needs a credential state"
     assert all(v in ("stored", "none", "unavailable") for v in cfg.keys.values()), cfg.keys
     # The page must go inert while a modal is up, or it scrolls out from under the sheet when the
-    # wheel turns (Thomas, 2026-07-31). Asserted as a PROPERTY rather than by driving a synthetic
-    # wheel event: this harness delivers only one wheel per run, so an event-based version of this
-    # check passed with the fix removed — it could not tell "blocked" from "never arrived".
+    # wheel turns (2026-07-31). Asserted as a PROPERTY rather than by driving a synthetic wheel
+    # event: this harness delivers only one wheel per run, so an event-based version of this check
+    # passed with the fix removed — it could not tell "blocked" from "never arrived".
     scroller = win.findChild(QObject, "scroller")
     assert scroller is not None, "no Flickable named 'scroller' — the scroll lock cannot be checked"
     assert scroller.property("enabled") is False, (
@@ -553,10 +554,10 @@ def check() -> None:
     # The keybind recorder: drive it with synthetic key events and confirm it captures a combo
     # and commits the validated string. Done here because its logic (modifier accretion, the
     # commit-on-release) has no non-Qt half to unit-test.
-    # D40 / the stored-key leak (Thomas, 2026-08-01): the Add sheet must answer ONLY from the key
-    # typed into it. Anthropic already has a live model list in the provider cache by this point
-    # (addProvider + the roster's fetch), which is exactly the state that used to make a junk key
-    # look valid — so this asserts the sheet stays empty and uncommittable until a trial succeeds.
+    # The stored-key leak (2026-08-01): the Add sheet must answer ONLY from the key typed into it.
+    # Anthropic already has a live model list in the provider cache by this point (addProvider +
+    # the roster's fetch), which is exactly the state that used to make a junk key look valid — so
+    # this asserts the sheet stays empty and uncommittable until a trial succeeds.
     cfg.addProvider("anthropic")
     settle()
     win.setProperty("addEditing", False)
@@ -589,7 +590,7 @@ def check() -> None:
 
     # The Add form's values must SURVIVE the crossing into Python. A QML object literal arrives
     # as a QJSValue, not a dict, so an isinstance check silently dropped every one of them and
-    # stored the schema fallbacks instead — a chosen model vanished on Add (Thomas, 2026-08-01).
+    # stored the schema fallbacks instead — a chosen model vanished on Add (2026-08-01).
     # addKey is cleared first: commitAdd now refuses to close on a typed-but-untested key (the
     # silent-drop fix), and the prior sub-test left one in the box.
     win.setProperty("addKey", "")

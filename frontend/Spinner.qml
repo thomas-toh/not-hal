@@ -1,5 +1,5 @@
 // A general circular loader — a three-quarter ring, turning. Tokenised out of SettingsWindow's
-// inline component (2026-08-02, Thomas) so the settings sheets (the Test button) and the island's
+// inline component (2026-08-02) so the settings sheets (the Test button) and the island's
 // boot indicator are the SAME mark by construction rather than two that happen to match.
 //
 // Reserves its 16×16 box whether or not it is running, so starting a probe never shifts the row it

@@ -1,4 +1,4 @@
-"""Al — the mascot sprite renderer (Track P).
+"""Al, the mascot sprite renderer.
 
 Reads the sprite kit (`frontend/al/al-sprites.json`, kit **v3**: palette-indexed 26×26
 frames grouped into named CLIPS — the kit's own source of truth; never hand-edit it, the next
@@ -38,7 +38,7 @@ from PySide6.QtQuick import QQuickImageProvider
 
 _JSON = Path(__file__).resolve().parent / "al" / "al-sprites.json"
 
-# Idle fidgets this app never rolls (Thomas). The kit still ships the frames and the script still
+# Idle fidgets this app never rolls. The kit still ships the frames and the script still
 # weights them; the pick just skips them, in EITHER tier — `look-around` is a filler, `jump` a gag.
 # Muting here rather than in the kit because Design's next export overwrites `al-sprites.json`.
 MUTED = frozenset({"look-around", "jump"})
@@ -315,7 +315,7 @@ class QmlAl(QObject):
     Given a `model`, it also picks the STATE itself, following the turn. That decision lives here
     and not in QML because Al now shows on two surfaces — the island and the settings bar — off
     one player: two QML Bindings writing `alState` would fight, and neither window is reliably
-    the one that is open (the settings window is spawned on demand, spec/70 §2).
+    the one that is open (the settings window is spawned on demand).
     """
 
     changed = Signal()
@@ -347,7 +347,7 @@ class QmlAl(QObject):
         the wrong clip). Two of the rungs are less obvious than they look:
 
         `speaking` is the kit's CLIP, never the feed's state word — the orchestrator only
-        publishes `speaking` when TTS actually plays, and TTS is off by default (D23), so the
+        publishes `speaking` when TTS actually plays, and TTS is off by default, so the
         reply arrives while the feed still says `thinking`. And it is driven by the ISLAND's
         typewriter (`revealing`), not the daemon's stream, so Al mimes what is on screen: the
         two finish seconds apart on a long answer, in either order. `not done` covers the case
@@ -355,17 +355,17 @@ class QmlAl(QObject):
         """
         m = self._model
         if m.state == "listening":
-            # First, and above the fault: spec/50 rule 4 makes the listening indicator binding,
-            # so a stale error must never be able to mask an open mic. (In practice they cannot
-            # coexist — `listening` is in `clearsTurn`, so opening a capture clears the fault —
-            # but the ordering says which one wins if that ever changes.)
+            # First, and above the fault: the listening indicator is binding, so a stale error
+            # must never be able to mask an open mic. (In practice they cannot coexist —
+            # `listening` is in `clearsTurn`, so opening a capture clears the fault — but the
+            # ordering says which one wins if that ever changes.)
             want = "listening"
         elif m.error:
             want = "error"                            # `fail`, then it settles onto `held`
         elif m.reply:
             want = "speaking" if (m.revealing or not m.done) else "done"
         elif m.state in ("thinking", "transcribing", "transforming"):
-            # The typewriter, for anything where the machine is chewing on it (Thomas): the model
+            # The typewriter, for anything where the machine is chewing on it: the model
             # composing, and dictation's transcribe + tidy passes. These three read identically
             # to the user — the island shows a status word and nothing else is asked of them.
             want = "working"
@@ -382,7 +382,7 @@ class QmlAl(QObject):
     # How many empty CELL rows/columns the resting frame carries around Al's ink. A caller that
     # puts her against an edge needs these: the cell is 26×26 and her ink occupies rather less, so
     # an image placed flush floats away from the edge by the difference. Constant — read off the
-    # kit rather than measured by eye, so Design re-exporting cannot silently move her (D40).
+    # kit rather than measured by eye, so Design re-exporting cannot silently move her.
     # In display pixels: pad * (drawn size / cell).
     @Property(int, constant=True)
     def padBottom(self) -> int:

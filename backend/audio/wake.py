@@ -1,15 +1,15 @@
-"""Track G build step 2 (docs/04 §8): mic -> ring buffer -> openWakeWord -> console.
+"""Mic -> ring buffer -> openWakeWord -> console.
 
 Listens to the default input device, runs openWakeWord on the live 16 kHz mono
 stream, and prints a line when the wake phrase fires. Untriggered audio lives only
-in a <=3 s in-RAM ring buffer and is then discarded (spec/50 rule 3) -- nothing is
-ever written to disk.
+in a <=3 s in-RAM ring buffer and is then discarded -- nothing is ever written to
+disk.
 
 Cross-platform (macOS is a full peer): sounddevice (PortAudio) and
 onnxruntime both run on Windows and macOS; audio-endpoint access is the one
 OS-specific seam and sounddevice hides it. No platform branches live here.
 
-Engine: openWakeWord for M0. LiveKit Wakeword is a noted future swap (it also feeds
+Engine: openWakeWord for now. LiveKit Wakeword is a noted future swap (it also feeds
 on 16 kHz PCM and reads back a score), so it would drop in behind this same loop.
 
 Run:
@@ -27,22 +27,22 @@ from shared.log import setup_logging
 
 log = logging.getLogger("nothal.wake")
 
-# Sample rate is an audio schema constant -- load it, never hardcode (hard rule 3).
+# Sample rate is an audio schema constant -- load it, never hardcode (the schema is the truth).
 SAMPLE_RATE = load_schemas()["audio"]["inbound"]["sampleRateHz"]
 
 # --- implementation choices (NOT schema/spec constants; live here, not in spec) ---
-WAKE_MODEL = "hey_jarvis"       # bundled openWakeWord model; the M0 stand-in phrase
+WAKE_MODEL = "hey_jarvis"       # bundled openWakeWord model; a stand-in phrase
 BLOCK_MS = 80                   # openWakeWord's native chunk = 1280 samples @ 16 kHz.
 BLOCK_SAMPLES = SAMPLE_RATE * BLOCK_MS // 1000          # 1280
 THRESHOLD = 0.5                 # ponytail: openWakeWord default; raise it if it false-fires
 
-# spec/50 rule 3: <= 3 s of audio, in RAM only, untriggered audio discarded.
+# Retention bound: <= 3 s of audio, in RAM only, untriggered audio discarded.
 BUFFER_SECONDS = 3.0
 BUFFER_BLOCKS = int(BUFFER_SECONDS * 1000 // BLOCK_MS)  # 37 blocks = 2.96 s (<= 3 s)
 
 
 def _selfcheck() -> None:
-    """No hardware: prove the ring buffer honours spec/50 rule 3 (bounded, oldest-out)."""
+    """No hardware: prove the ring buffer honours the retention bound (bounded, oldest-out)."""
     assert BUFFER_BLOCKS * BLOCK_MS <= BUFFER_SECONDS * 1000, "ring buffer exceeds 3 s cap"
     ring: deque = deque(maxlen=BUFFER_BLOCKS)
     for i in range(BUFFER_BLOCKS + 50):                # overfill past the cap
@@ -64,7 +64,7 @@ def listen() -> None:
     openwakeword.utils.download_models([WAKE_MODEL])
     model = Model(wakeword_models=[WAKE_MODEL], inference_framework="onnx")
 
-    ring: deque = deque(maxlen=BUFFER_BLOCKS)   # pre-roll for step 3 (STT); unused until then
+    ring: deque = deque(maxlen=BUFFER_BLOCKS)   # pre-roll handed to speech-to-text
     log.info("listening on default input @ %d Hz -- say the wake phrase (Ctrl-C to stop)",
              SAMPLE_RATE)
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
@@ -82,7 +82,7 @@ def listen() -> None:
 
 def main() -> None:
     setup_logging()
-    ap = argparse.ArgumentParser(description="not-hal wake-word listener (Track G step 2)")
+    ap = argparse.ArgumentParser(description="Listen for the wake word")
     ap.add_argument("--selfcheck", action="store_true",
                     help="verify ring-buffer discipline without a microphone, then exit")
     args = ap.parse_args()

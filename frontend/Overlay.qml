@@ -1,4 +1,4 @@
-// The Teleprompter island (component P). Locked design: sandbox/teleprompter-mockup.html;
+// The Teleprompter island. Locked design: sandbox/teleprompter-mockup.html;
 // window recipe + concave-corner path proven in sandbox/qml_spike/ (see NOTES.md).
 //
 // Solid black, fused to the top screen edge: bottom corners round inward, top corners flare
@@ -6,7 +6,7 @@
 // outward flares need a real path, because Rectangle (like CSS border-radius) rounds inward.
 //
 // Everything here is driven by the `overlay` context property (frontend/model.py); the
-// island renders what arrives and never talks back (Contract P, D19).
+// island renders what arrives and never talks back.
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.Window
@@ -26,7 +26,7 @@ Window {
     // and that is deliberate: the kit's cell carries 3–4 cells of dead margin around the ghost,
     // so what actually spills past the silhouette is at most 3px, and only `done/sparkle` (1px,
     // top) and `needs-permission/granted` (3px, bottom) spill at all. Letting the box overhang
-    // rather than growing `baseH` to contain it is Thomas's call: the margin is a safety area,
+    // rather than growing `baseH` to contain it is a deliberate choice: the margin is a safety area,
     // and using it is cheaper than making the island 35% taller.
     readonly property bool alOn: cfg.values.al_in_island !== false
     readonly property int alPx: 52
@@ -50,7 +50,7 @@ Window {
     readonly property real flare: 18            // outward concave fillet at the top edge
     readonly property real botR: 13.5           // bottom corner radius (convex)
     // Scrolling listening waveform — a level history flowing right->left (dots in silence, swelling
-    // into bars on sound). Params tuned in sandbox/teleprompter-waveform-mockup.html (Thomas).
+    // into bars on sound). Params tuned in sandbox/teleprompter-waveform-mockup.html.
     // Cut when Al is in: she takes 76px of the compact pill, and at 20 samples the pill grew
     // from 230 to 306. Fourteen keeps it near its old width, and the wave is a rolling history
     // whose oldest samples fade out on the left anyway — so the cut comes off the end that was
@@ -85,7 +85,7 @@ Window {
     readonly property int padBottom: baseH - padTop - lineBox                      // 12
     readonly property int maxLines: 3                    // island stops growing here, then scrolls
 
-    // --- expanded view / "peek" (D27; amends D22 — the island now takes input over its
+    // --- expanded view / "peek" (the island now takes input over its
     // silhouette, wired natively in __main__.py). Hover a showing answer for a hint, click to grow
     // it into the full turn (PeekPanel). Everything here is inert until `peeking`, so the island's
     // normal behaviour is unchanged. ---
@@ -100,11 +100,11 @@ Window {
     property real peekFade: peeking ? 1 : 0
     Behavior on peekFade { NumberAnimation { duration: root.reducedMotion ? 0 : Theme.durationPeek; easing.type: Easing.OutCubic } }
     // Host (frontend/__main__.py) does the clipboard write and the save dialog — a QML file
-    // has no business with either (spec/50: user-initiated export, host-owned).
+    // has no business with either (user-initiated export, host-owned).
     signal copyRequested(string text)
     signal saveRequested(string text)
     // A new capture (the hotkey, a new turn) clears the reply → not peekable → leave the peek, so
-    // the island returns to the compact view instead of a large empty box mid-turn (D27 bug fix).
+    // the island returns to the compact view instead of a large empty box mid-turn.
     onPeekableChanged: if (!peekable) peeking = false
     // Reset the peek only once the island has FULLY faded out (visible → false), so a dismiss fades
     // at the peek size instead of shrinking on screen first (the size-snap is then invisible). The
@@ -148,7 +148,7 @@ Window {
     onPromptChanged: promptShown = false            // a new turn earns a fresh hold
     readonly property bool replyReady: overlay.reply !== "" && (promptShown || prompt === "")
     readonly property string bodyText: isError ? overlay.error
-                                     : dictWord !== "" ? ""       // dictation shows a status word, not text (D2)
+                                     : dictWord !== "" ? ""       // dictation shows a status word, not text
                                      : (replyReady ? overlay.reply : prompt)
     // Has the typewriter caught up with everything it has been given?
     readonly property bool revealDone: reveal.shown >= bodyText.length
@@ -170,7 +170,7 @@ Window {
         onTriggered: root.promptShown = true
     }
 
-    // --- when the island stops showing (D24) ---
+    // --- when the island stops showing ---
     // `idle` from the daemon means the DAEMON is finished — not "blank". How long an answer
     // stays up is a fact about the reveal, and this is the only process that can see it. The
     // daemon owned this decision for two revisions and blanked answers mid-sentence both times.
@@ -196,7 +196,7 @@ Window {
                                  || st === "transcribing" || st === "transforming"
                                  || st === "booting"
     property bool hidden: false                     // dwell expired, or the user dismissed
-    // Dictation's terminal confirmation (D2). `st` flips to `idle` the instant after `pasted`,
+    // Dictation's terminal confirmation. `st` flips to `idle` the instant after `pasted`,
     // so this LATCH — not `st` — is what keeps the ✓ on screen for its short dwell; a new turn
     // (the next `busy`) clears it.
     property bool pasted: false
@@ -207,14 +207,14 @@ Window {
         if (st !== "booting" && st !== "idle") bootLatch = false
     }
     onBusyChanged: if (busy) { hidden = false; pasted = false }  // a new turn brings the island back
-    // `hidden` outranks `busy` deliberately: pressing Esc while not-hal is still thinking must
+    // `hidden` outranks `busy` deliberately: pressing Esc while the app is still thinking must
     // take the island away THAT INSTANT. If this read `busy || …` the island would linger
-    // until the daemon got round to publishing its abort — which is the round trip D24 exists
-    // to remove, and it would be longest exactly when the daemon is wedged.
+    // until the daemon got round to publishing its abort — which is the round trip that local
+    // hiding exists to remove, and it would be longest exactly when the daemon is wedged.
     readonly property bool showing: !hidden && (busy || bodyText !== "" || pasted)
 
     // How long finished text stays put, in milliseconds, read off the user's own choice
-    // (General > Preferences, D43). The setting is a WORD like "2.5 s" rather than a number: a
+    // (General > Preferences). The setting is a WORD like "2.5 s" rather than a number: a
     // dropdown of sensible durations needs no new control and cannot be set to zero. `parseFloat`
     // reads the number off the front and stops at the space; anything unparseable falls back to
     // the Theme constant, which is also the shipped default — so a hand-broken setting looks
@@ -239,7 +239,7 @@ Window {
         onTriggered: root.hidden = true
     }
 
-    Timer {                                   // dictation's "Pasted ✓" beat, then the island hides (D2)
+    Timer {                                   // dictation's "Pasted ✓" beat, then the island hides
         id: pasteDwell
         objectName: "pasteDwell"              // reached by name from the self-check
         interval: Theme.durationPasteDwell
@@ -251,7 +251,7 @@ Window {
     // local and immediate — the daemon is told separately and never waited on.
     Connections {
         target: overlay
-        // Esc always dismisses the island outright — even from a peek (D27). Just `hidden`, NOT
+        // Esc always dismisses the island outright — even from a peek. Just `hidden`, NOT
         // `peeking = false`: resetting peeking here animates a shrink back to compact WHILE the
         // island is also fading out, so you see it shrink THEN vanish (both, visibly). Instead it
         // fades out at the peek size, and peeking resets only once fully hidden (onVisibleChanged),
@@ -275,10 +275,10 @@ Window {
     // means native move/resize operations that land a frame apart from the scene graph — newly
     // exposed area paints late, and the silhouette can be clipped mid-growth. Keep it fixed.
     //
-    // The mostly-empty frame is click-through via IslandHitTest (per-region WM_NCHITTEST, D27): it
+    // The mostly-empty frame is click-through via IslandHitTest (per-region WM_NCHITTEST): it
     // returns HTTRANSPARENT everywhere but the island silhouette, so the frame never swallows a
-    // click meant for the app beneath. (This was a blanket WS_EX_TRANSPARENT before D27.)
-    // Widest / tallest the island can EVER be — now including the peek (D27), which is both wider
+    // click meant for the app beneath. (It was previously a blanket WS_EX_TRANSPARENT.)
+    // Widest / tallest the island can EVER be — now including the peek, which is both wider
     // (peekW) and much taller (up to peekMaxH) than a normal turn. The island animates INSIDE this
     // fixed frame; if the frame is smaller than the peek, the peek is clipped — the black slab can't
     // grow and the panel is cut off. The frame stays fixed (no per-turn window resize; that tore).
@@ -344,7 +344,7 @@ Window {
     readonly property real inkTop: padTop + (lineBox - fm.height) / 2 + (fm.ascent - fm.capitalHeight)
     readonly property real fadeH: Math.max(4, inkTop - 0.5)   // ~16px at 18/1.3
 
-    // Gone = nothing to say and nothing left to read (D24 — no longer simply `st === "idle"`).
+    // Gone = nothing to say and nothing left to read (no longer simply `st === "idle"`).
     // The tray, not the island, says "alive".
     visible: showing || entrance > 0.01
     opacity: entrance
@@ -368,7 +368,7 @@ Window {
     // (see the animW/animH Behaviors): a resize that coincides with the pill appearing or
     // disappearing SNAPS instead of animating, so a re-opened pill is already the right size the
     // instant it shows — rather than fading in at the last turn's width and shrinking, because
-    // `idle` no longer clears the turn (D24) so the width lingers while hidden. Keys off the
+    // `idle` no longer clears the turn so the width lingers while hidden. Keys off the
     // pill's own visibility, so it holds for ANY re-open path (new turn · wake word · a future
     // expanded-view hotkey), not just the one that produced the bug. `entrance` LAGS `showing`
     // (it fades over fadeMs), which is exactly why gating on it works where gating on `showing`
@@ -440,7 +440,7 @@ Window {
     // it shows from end-of-speech until the transcript lands, then the prompt takes the slot.
     readonly property bool loaderOn: st === "thinking" && bodyText === ""
 
-    // Dictation's own status words (D2): steady, not the assistant's morphing loader. `pasted`
+    // Dictation's own status words: steady, not the assistant's morphing loader. `pasted`
     // shows a check — the ONLY on-screen signal the text reached the caret, since dictation
     // pastes into another app and never shows a reply. "Tidying" matches the settings "Tidy" label.
     readonly property string dictWord:
@@ -517,7 +517,7 @@ Window {
     // ---- listening: a scrolling level history ----
     // A stream that flows right->left, so time shows even in silence (as dots); when the mic catches
     // something the slots swell into bars, then keep scrolling out the left edge. Present ONLY while
-    // 'mic' messages arrive (feed.py drops the level to 0 when they stop) — spec/50's truthful
+    // 'mic' messages arrive (feed.py drops the level to 0 when they stop) — a truthful
     // indicator, never inferred from state alone. Dimensions live in the geometry block above.
     property var waveLevels: []               // rolling buffer: [0] leftmost/oldest, last newest/right
     function waveReset() { var a = []; for (var i = 0; i < root.waveCount; i++) a.push(0); waveLevels = a; }
@@ -602,7 +602,7 @@ Window {
         smooth: false                          // nearest-neighbour: keep the cells crisp
         opacity: root.entrance                 // fades with the island, never on its own
         // Hidden during boot AND through the boot pill's fade-out (bootShown): startup shows the
-        // circular loader instead of Al, and she must not flash in as the loader fades out (Thomas).
+        // circular loader instead of Al, and she must not flash in as the loader fades out.
         visible: root.alOn && !root.peeking && !root.bootShown
         source: alPlayer.source
         z: 5
@@ -676,7 +676,7 @@ Window {
 
         // Dictation's paste confirmation earns a real ✓ from the icon font — the island's body
         // face has no U+2713 (it renders as tofu). Set just after the "Pasted" word, shown only
-        // for the `pasted` beat (D2).
+        // for the `pasted` beat.
         Text {
             id: pasteMark
             objectName: "pasteMark"
@@ -709,14 +709,14 @@ Window {
         }
     }
 
-    // ---- latency readout: the M0 acceptance-run instrument ----
+    // ---- latency readout: the first-live-run instrument ----
     // status.json calls this "not user-facing chrome by default", so it is off unless asked
     // for (--latency, or the tray toggle). Targets come from shared/schemas/targets.json via the
-    // `targets` context property (D25) — no longer hardcoded here, so a number cannot be quoted
+    // `targets` context property — no longer hardcoded here, so a number cannot be quoted
     // two ways. A reading past a GATE renders at full strength so a miss is obvious at a glance.
     readonly property int fbTarget: targets.feedback.ms
     readonly property int fwTarget: targets.first_word.ms
-    // first_word is 'measured', not a gate (D25): under generate-then-play it is a reply-length
+    // first_word is 'measured', not a gate: under generate-then-play it is a reply-length
     // proxy, so the readout must show it neutrally and NEVER flag it red. If targets.json ever
     // reclassifies it to a gate, this expression starts colouring it — the reclassification is
     // data, not something baked into the renderer.
@@ -771,7 +771,7 @@ Window {
         }
     }
 
-    // ---- expanded view (D27) ----
+    // ---- expanded view ----
     // The island's one input surface: hover a showing answer for the hint, click to peek. Enabled
     // only when NOT peeking; once peeked, PeekPanel (below, so on top) owns all interaction. The
     // native filter in __main__.py is what lets these events reach the window at all — and only
@@ -800,7 +800,7 @@ Window {
         prompt: root.prompt
         reply: overlay.reply
         generating: overlay.reply !== "" && !overlay.done   // mid-stream peek: more still coming
-        model: overlay.model                                 // the model + tokens for the footer (D34)
+        model: overlay.model                                 // the model + tokens for the footer
         tokens: overlay.tokens
         visible: root.peeking || root.peekFade > 0.01
         opacity: root.peekFade

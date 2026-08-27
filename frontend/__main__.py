@@ -1,6 +1,6 @@
-"""The Teleprompter (component P) — a PySide6 + QML overlay on the Contract P status feed.
+"""The Teleprompter: a PySide6 + QML overlay on the daemon's status feed.
 
-A dumb subscriber (spec/00 D19): it renders whatever arrives on the localhost feed and never
+A dumb subscriber: it renders whatever arrives on the localhost feed and never
 drives the voice loop. Start it before or after the daemon — it reconnects either way.
 
 Run:
@@ -45,7 +45,7 @@ FONTS_DIR = Path(__file__).resolve().parent / "fonts"
 
 # The design's face is **Inter**, bundled beside this package and registered at startup —
 # so it needs no system install and travels to the Mac unchanged. (Inter → Hanken Grotesk
-# → Archivo over 2026-07-24/25, then back to Inter on 2026-07-31 — Thomas's call each time.)
+# → Archivo over 2026-07-24/25, then back to Inter on 2026-07-31.)
 # The rest of the chain only matters if the
 # bundled file goes missing: QML's font.family takes a single name and Qt substitutes silently (on a
 # stock Windows box an absent family lands on Tahoma), so we walk the chain here and say out
@@ -54,7 +54,7 @@ FONT_STACK = ["Inter", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", "
 
 
 # (There was a global +0.015 em tracking here, applied to the application font so every QML Text
-# inherited it. Removed 2026-07-31, Thomas — it rode the previous face and Inter is spaced well
+# inherited it. Removed 2026-07-31 — it rode the previous face and Inter is spaced well
 # enough without it. Per-element letterSpacing, like CodeLabel's -0.2, is untouched.)
 
 
@@ -87,8 +87,8 @@ def pick_font() -> str:
 def check_qml_available() -> bool:
     """PySide6 can install HALF-completed on Windows without Long Paths: `import PySide6`
     succeeds while the deeply-nested QML module trees never extract, so the failure surfaces
-    later as a baffling "module QtQuick is not installed". That cost an hour once. Now that
-    PySide6 is a core dependency (D23) any machine can inherit it, so say so plainly."""
+    later as a baffling "module QtQuick is not installed". That cost an hour once. PySide6 is a
+    core dependency, so any machine can inherit the half-install; say so plainly."""
     qml_dir = Path(_pyside_dir) / "qml" / "QtQuick"
     if qml_dir.is_dir():
         return True
@@ -120,8 +120,8 @@ _WM_NCHITTEST, _HTTRANSPARENT = 0x0084, -1
 
 
 class DismissKey(QAbstractNativeEventFilter):
-    """The overlay's one Win32 message hook: bare Esc (spec/00 D24) + a re-read of the machine
-    settings the overlay mirrors into QML (U-01).
+    """The overlay's one Win32 message hook: bare Esc + a re-read of the machine
+    settings the overlay mirrors into QML.
 
     Esc is registered ONLY while the island is on screen and released the instant it hides.
     The daemon used to attempt exactly this discipline and could not keep it: it armed the key
@@ -133,10 +133,10 @@ class DismissKey(QAbstractNativeEventFilter):
     A press hides the island immediately (locally, no round trip) and tells the daemon
     afterwards, so dismissal feels instant even if the daemon is busy or gone.
 
-    Narrow registration, no keyboard hook: spec/50 rule 11 governs this exactly as it governs
-    the daemon's doors — RegisterHotKey delivers only this combo and nothing else is observed.
+    Narrow registration and no keyboard hook, as with the daemon's own hotkeys:
+    RegisterHotKey delivers only this combo and nothing else is observed.
 
-    `on_settings` (U-01): the OS broadcasts WM_SETTINGCHANGE when any system setting changes, so
+    `on_settings` : the OS broadcasts WM_SETTINGCHANGE when any system setting changes, so
     we re-query reduced-motion (the one setting we mirror) event-driven — only when it actually
     changes — rather than polling it every time the island shows. It fires regardless of whether
     Esc is armed, because a setting can change while the island is hidden. Folded onto this one
@@ -165,7 +165,7 @@ class DismissKey(QAbstractNativeEventFilter):
     def nativeEventFilter(self, event_type, message):
         # Qt hands us every message it pumps, including thread messages like WM_HOTKEY (which
         # has no window). We must look even while Esc is disarmed, because WM_SETTINGCHANGE
-        # (U-01) is not gated by the island being on screen.
+        # This is not gated by the island being on screen.
         # `event_type` is bytes or a QByteArray depending on the binding's mood; both convert,
         # and matching on a substring rather than the exact tag covers Qt's two Windows
         # dispatchers ("windows_generic_MSG" and "windows_dispatcher_MSG") without listing them.
@@ -191,7 +191,7 @@ class DismissKey(QAbstractNativeEventFilter):
 
 
 class IslandHitTest(QAbstractNativeEventFilter):
-    """Per-region click-through (D27, amends D22). The island silhouette takes hover + clicks — but
+    """Per-region click-through. The island silhouette takes hover + clicks — but
     ONLY while there is a settled answer to peek (or a peek is already open); the surrounding frame
     is always click-through, so a click over empty frame still reaches the app beneath.
 
@@ -206,7 +206,7 @@ class IslandHitTest(QAbstractNativeEventFilter):
         super().__init__()
         self._win = win
         # Called on every hit-test: return True to force the WHOLE overlay click-through, whatever
-        # the island is doing. Used so a topmost HUD never steals a click from another not-hal window
+        # the island is doing. Used so a topmost HUD never steals a click from another window of this app
         # (the Settings window) sitting beneath it.
         self._is_passthrough = is_passthrough
         self._hwnd = 0
@@ -237,7 +237,7 @@ class IslandHitTest(QAbstractNativeEventFilter):
             return False, 0
         if msg.message != _WM_NCHITTEST or int(msg.hWnd or 0) != self._hwnd:
             return False, 0
-        # While another not-hal window (the Settings window) is open, the overlay must NEVER eat a
+        # While another window of this app (the Settings window) is open, the overlay must NEVER eat a
         # click: it is a topmost HUD covering the top-centre of the screen, so its silhouette sits
         # over a real window the user is trying to use — which is why Settings buttons under it, and
         # the hover needed to reach a row's Edit menu, did not respond. Fully click-through then; the
@@ -276,10 +276,10 @@ def stamp_overlay_styles(win) -> None:
     """NOACTIVATE + TOPMOST on the HWND directly — the native guarantees the Qt flags alone don't
     reliably give on Windows.
 
-    NOACTIVATE — BINDING (spec/40): the overlay must never take keyboard focus, because during
+    NOACTIVATE — BINDING: the overlay must never take keyboard focus, because during
     dictation focus decides where the paste lands. (Recipe proven in sandbox/qml_spike.)
 
-    Click-through is NO LONGER a blanket WS_EX_TRANSPARENT here (D27). The island now takes hover
+    Click-through is NO LONGER a blanket WS_EX_TRANSPARENT here. The island now takes hover
     and clicks over its own silhouette (to peek), so the whole window cannot be transparent — and a
     fully transparent window never receives WM_NCHITTEST anyway. IslandHitTest answers hit-testing
     per region instead. WS_EX_TRANSPARENT is explicitly CLEARED in case an earlier build left it on.
@@ -297,7 +297,7 @@ def stamp_overlay_styles(win) -> None:
 
 
 def round_corners(win) -> None:
-    """Ask DWM to round the settings window's corners (D29).
+    """Ask DWM to round the settings window's corners.
 
     The window draws its own caption (Edge/Chrome style), so it is frameless — and a frameless
     window keeps square corners unless it asks. DWMWA_WINDOW_CORNER_PREFERENCE (attribute 33,
@@ -328,15 +328,15 @@ def round_corners(win) -> None:
 def main() -> int:
     logging.basicConfig(level=logging.INFO, datefmt="%H:%M:%S",
                         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")
-    ap = argparse.ArgumentParser(description="not-hal Teleprompter — Contract P overlay (Track P)")
+    ap = argparse.ArgumentParser(description="Run the overlay")
     ap.add_argument("--host", default=HOST)
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--latency", action="store_true",
-                    help="show the per-turn latency readout (the M0 acceptance-run "
+                    help="show the per-turn latency readout (the first-live-run "
                          "instrument); also togglable from the tray")
     args = ap.parse_args()
 
-    # QApplication (not QGuiApplication as in the spike): C3's tray lives in QtWidgets, and
+    # QApplication (not QGuiApplication as in sandbox/qml_spike): the tray lives in QtWidgets, and
     # the BINDING non-activation is cheaper to prove against the final app class now.
     if not check_qml_available():
         return 2
@@ -363,7 +363,7 @@ def main() -> int:
 
     model = OverlayModel(show_latency=args.latency)
     engine = QQmlApplicationEngine()
-    # Al the mascot (Track P): the taskbar icon (above) renders her directly; the settings window
+    # Al the mascot: the taskbar icon (above) renders her directly; the settings window
     # draws her through this provider — `image://al/<state>/<clip>/<frame>`.
     engine.addImageProvider("al", al.AlImageProvider())
     # The repo root, so `import frontend` resolves this package's qmldir and its Theme
@@ -371,12 +371,12 @@ def main() -> int:
     engine.addImportPath(str(Path(__file__).resolve().parent.parent))
     engine.rootContext().setContextProperty("overlay", model)   # not "model": Repeater shadows it
     # The settings window's model. Built now (it is a bare QObject over a JSON file) but the
-    # WINDOW is not — spec/70 §2: spawned only when opened, so an unopened settings screen
+    # WINDOW is not: spawned only when opened, so an unopened settings screen
     # costs nothing but this object.
     cfg = SettingsModel()
     engine.rootContext().setContextProperty("cfg", cfg)
     engine.rootContext().setContextProperty("fontFamily", pick_font())
-    engine.rootContext().setContextProperty("targets", targets())   # latency targets (D25)
+    engine.rootContext().setContextProperty("targets", targets())   # latency targets
     # Al's player. The kit ships its own timing script (idle fidgets, enters, exits, holds), so
     # the window binds one URL and nothing else — it never counts frames. It follows the turn
     # itself off the model (QmlAl._follow) rather than being driven from QML.
@@ -411,12 +411,12 @@ def main() -> int:
 
     def on_dismiss() -> None:
         """Esc. Hide first, tell the daemon second — the island must never look like it is
-        waiting for permission to go away (D24)."""
+        waiting for permission to go away."""
         model.dismissed.emit()
         feed.send(m_dismiss())
 
     def on_settings_change() -> None:
-        # WM_SETTINGCHANGE (U-01): re-read reduced-motion and push it only if it actually
+        # WM_SETTINGCHANGE: re-read reduced-motion and push it only if it actually
         # flipped, so a user who toggles 'show animations' — the person most likely doing so
         # because motion is bothering them right now — sees it apply without restarting.
         nonlocal reduce_state
@@ -438,7 +438,7 @@ def main() -> int:
     dismiss_key = DismissKey(on_dismiss, on_settings_change)
     app.installNativeEventFilter(dismiss_key)
     island_hit = IslandHitTest(win, is_passthrough=settings_is_open)     # noqa: F841
-    app.installNativeEventFilter(island_hit)                             # per-region click-through (D27)
+    app.installNativeEventFilter(island_hit)                             # per-region click-through
 
     def restamp() -> None:
         # The island hides at idle; a re-shown window can come back with a fresh HWND, so
@@ -448,16 +448,16 @@ def main() -> int:
         showing = win.isVisible()
         if showing:
             stamp_overlay_styles(win)
-            island_hit.set_hwnd(int(win.winId()))   # a re-shown window can have a fresh HWND (D27)
+            island_hit.set_hwnd(int(win.winId()))   # a re-shown window can have a fresh HWND
         dismiss_key.arm(showing)
 
     win.visibleChanged.connect(restamp)
     restamp()
 
-    # Peek actions (D27): the overlay owns the current turn's text (it arrives on the feed), so
+    # Peek actions: the overlay owns the current turn's text (it arrives on the feed), so
     # Copy and Save are handled here in the host — a QML file has no business touching the clipboard
     # or a file dialog. Save is user-initiated export of an answer already on screen (and already in
-    # logs/nothal.log per spec/50 rule 3), so it is strictly less exposure than the log itself.
+    # logs/nothal.log), so it is strictly less exposure than the log itself.
     def on_copy(text: str) -> None:
         app.clipboard().setText(text)
 
@@ -478,9 +478,9 @@ def main() -> int:
 
     # Per-region click-through is now IslandHitTest (WM_NCHITTEST -> HTTRANSPARENT), NOT setMask:
     # Qt's setMask is SetWindowRgn on Windows, which clips PAINTING too (measured 70% painted
-    # before, 10% after). The filter affects hit-testing only. D27; proven in sandbox/qml_spike.
+    # before, 10% after). The filter affects hit-testing only. Proven in sandbox/qml_spike.
 
-    # The settings window (D29), built on first open and kept afterwards — reopening is common
+    # The settings window, built on first open and kept afterwards — reopening is common
     # enough that rebuilding it each time would be wasteful, and it holds no feed state to go
     # stale. Closing it drops it off screen (and, natively, destroys its HWND — see show_settings);
     # app.setQuitOnLastWindowClosed(False) above means that is not a quit, exactly as the island

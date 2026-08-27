@@ -1,15 +1,15 @@
-"""Track G step 6 (docs/04 §8): the orchestrator — the spec/40 state machine as one daemon.
+"""The orchestrator: the state machine, run as one daemon.
 
     IDLE ──wake──▶ LISTENING ──end-of-speech──▶ THINKING ──▶ SPEAKING ─▶ dwell ─▶ IDLE
 
 Wires steps 2–5 together: wake (openWakeWord) → listen (Silero VAD + faster-whisper) →
 think (Contract B model) → speak (earcons + Kokoro through a persistent warm output
-stream — the spec/40 BT keep-alive). Barge-in (binding): speech during SPEAKING cuts TTS
-and becomes the next utterance. This is the only module that knows the others exist
-(docs/04 §2) — audio and llm meet here through the contract types.
+stream — the BT keep-alive). Barge-in (binding): speech during SPEAKING cuts TTS
+and becomes the next utterance. This is the only module that knows the others exist —
+audio and llm meet here through the contract types.
 
 Run:
-    python -m backend.orchestrator              # the M0 loop, live (mic + speakers)
+    python -m backend.orchestrator              # the voice loop, live (mic + speakers)
     python -m backend.orchestrator --selfcheck  # no mic/models/network: decision logic only
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ from dataclasses import replace
 
 # Intel's Fortran runtime — pulled in by faster-whisper's ctranslate2 / MKL below — installs a
 # console-control handler that ABORTS the process on Ctrl-Break with `forrtl: error (200)`. That
-# hijacks run.py's D39 shutdown (it asks with CTRL_BREAK first) BEFORE Python's KeyboardInterrupt
+# hijacks run.py's shutdown (it asks with CTRL_BREAK first) BEFORE Python's KeyboardInterrupt
 # can run this module's graceful `finally` — so the ugly stack trace prints AND a local model
 # server we started is left running. Disabling the handler (documented Intel env var) hands the
 # signal back to Python, so `main()`'s `except KeyboardInterrupt` / `finally` run as intended. Set
@@ -65,14 +65,14 @@ from shared import settings
 
 log = logging.getLogger("nothal.orchestrator")
 
-# --- interaction timings (spec/40) ---
-# The answer dwell is NOT here any more (D24). The daemon spent two revisions guessing how
+# --- interaction timings ---
+# The answer dwell is NOT here any more. The daemon spent two revisions guessing how
 # long an answer needed to stay up — a floor, then a per-word scaling — because it was timing
 # a reveal it could not see: the island types at a fixed rate, so the daemon was estimating
 # the overlay's own animation. It now publishes `idle` the moment it is free and the island
 # decides when to stop showing, which is the only place the reveal state exists.
 BARGE_CHUNKS = 4       # sustained speech chunks (~128 ms) to call it a barge-in; with the
-                       # low-latency pump the cut lands ≤ 250 ms (spec/40 binding).
+                       # low-latency pump the cut lands ≤ 250 ms (binding).
                        # ponytail: also the echo-tolerance knob on open speakers (headset
                        # output is the design target); raise it if TTS self-triggers.
 MIC_LEVEL_REF = 6000.0  # int16 RMS mapped to a full overlay bar (Contract P 'mic' level).
@@ -87,27 +87,26 @@ MIC_LEVEL_REF = 6000.0  # int16 RMS mapped to a full overlay bar (Contract P 'mi
 MIN_BOOT_S = 1.5
 
 # The daemon's pre-router default model. It lives HERE, not in an adapter: the adapters
-# carry no model preference (D30 agnosticism pass), so the choice of what to run when nothing
-# else says belongs to the caller. Until spec/20's router lands, the orchestrator constructs B1
-# directly (see __init__), so this is necessarily a Claude model — a Groq id would fail on B1.
-# When the router arrives it reads the primary provider + model from settings and this goes away.
-# The fallback when the router (D33) finds no `primary` configured — env-overridable.
+# carry no model preference, so the choice of what to run when nothing else says belongs to the
+# caller. Until the router lands, the orchestrator constructs B1 directly (see __init__), so this
+# is necessarily a Claude model — a Groq id would fail on B1. When the router arrives it reads the
+# primary provider + model from settings and this goes away.
+# The fallback when the router finds no `primary` configured — env-overridable.
 DAEMON_MODEL = os.environ.get("NOTHAL_MODEL", "claude-opus-4-8")
 
-# Dictation cleanup (spec/60, D15/S-06): Groq by default — cloud, fast, cheap, and the key is
-# already in the credential store. Since D33 the cleanup ROLE is settings-configurable, so these
+# Dictation cleanup: Groq by default — cloud, fast, cheap, and the key is
+# already in the credential store. The cleanup ROLE is settings-configurable, so these
 # are the FALLBACK for an unconfigured `cleanup_dictation`, not the only path. Must be an
 # OpenAI-wire provider — build_model picks the adapter by wire, so pointing this at Anthropic
 # would work too, but a small fast model is the point of cleanup.
 CLEANUP_PROVIDER = os.environ.get("NOTHAL_CLEANUP_PROVIDER", "groq")
 CLEANUP_MODEL = os.environ.get("NOTHAL_CLEANUP_MODEL", "llama-3.1-8b-instant")
 
-# The dictation cleanup instruction (spec/60) — the "transform, never answer" task for `transform`
-# (D12/D15). The editing rules: fix, don't rewrite, and handle the two things a one-line
-# "clean it up" misses — spoken
-# self-corrections ("scratch that") and spoken punctuation/layout cues. Context injection (selected
-# text / clipboard / screen) is deliberately NOT here — that is the separate #3 lift.
-# D37 adds the spoken LIST commands, which are the same idea one step up: a punctuation cue fires
+# The dictation cleanup instruction — the "transform, never answer" task for `transform`.
+# The editing rules: fix, don't rewrite, and handle the two things a one-line "clean it up"
+# misses — spoken self-corrections ("scratch that") and spoken punctuation/layout cues. Context
+# injection (selected text / clipboard / screen) is deliberately NOT here — that is separate, later work.
+# The spoken LIST commands are the same idea one step up: a punctuation cue fires
 # once at one site, a list command changes the shape of everything until "end list". Dictation only.
 # ponytail: a code constant until the cleanup role is user-configurable; the guardrail against
 # answering lives in TRANSFORM_SYSTEM, not here.
@@ -166,13 +165,13 @@ DICTATION_CLEANUP = (
 
 
 def capture_over(fired: bool, eos: EndOfSpeech, keyed: bool, auto_end: bool) -> bool:
-    """Should a capture stop, given what the VAD just decided? (D20)
+    """Should a capture stop, given what the VAD just decided?
 
     On a keyed turn **the key is the endpoint**: the 1 s silence cut no longer ends the
     turn, so you can pause mid-thought and the mic stays yours until you tap or release.
     Two of `EndOfSpeech`'s three exits survive a key endpoint — "you never said anything"
     and the 30 s runaway cap — and its bare `fired` flag cannot tell the three apart, so
-    they are re-read off `eos` here. `auto_end` (spec/70) puts the silence cut back for
+    they are re-read off `eos` here. `auto_end` puts the silence cut back for
     people who would rather not tap twice.
     """
     if not fired:
@@ -183,16 +182,16 @@ def capture_over(fired: bool, eos: EndOfSpeech, keyed: bool, auto_end: bool) -> 
 
 
 def sentences(text: str) -> int:
-    """Count sentences for the speak/hold split. ponytail: M0 heuristic (spec/40) —
-    terminator runs; 'Dr.' overcounts. Retired at M0.5 when the model tags spoken/held."""
+    """Count sentences for the speak/hold split. ponytail: a first-build heuristic —
+    terminator runs; 'Dr.' overcounts. Retired when the model tags spoken/held."""
     return len(re.findall(r"[.!?]+(?=\s|$)", text.strip()))
 
 
-# Error.kind (spec/20) -> one spoken sentence (spec/40 narration rules).
+# Error.kind -> the one short sentence spoken for it.
 SPOKEN_ERRORS = {
     "auth": "I can't reach my model: the API key is missing or rejected.",
     "rate_limit": "I'm being rate limited. Give me a moment and try again.",
-    # B1 no longer emits 'context' (B-02) — kept for other adapters. Door-neutral wording
+    # B1 no longer emits 'context' — kept for other adapters. Door-neutral wording
     # (was "Wake me afresh", wake-word framing for a product whose wake word is off by default).
     "context": "This conversation got too long for me. Start a new turn to reset me.",
     "unavailable": "My model is unreachable right now.",
@@ -201,7 +200,7 @@ SPOKEN_ERRORS = {
     # deleted from a local runner. Deliberately points at the SETTING rather than claiming the model
     # was deleted, since a 404 can also mean a mistyped endpoint path.
     "no_model": "I can't find the model I'm set to use. Check the model in settings.",
-    # D36: reached only after the tool loop's retry has also failed, so "try again" is the honest
+    # Reached only after the tool loop's retry has also failed, so "try again" is the honest
     # advice — the same words usually work on a resample.
     "malformed_tool_call": "I couldn't form a valid request to my tools. Try again.",
 }
@@ -215,8 +214,8 @@ def _start_local_servers() -> None:
     """Start a headless server for every role that resolves to a local runner declaring one.
 
     Roles are deduplicated by provider — assistant and dictation on the same Ollama is one server,
-    not two. A failure is logged and swallowed: an unstartable server is exactly the case D1
-    already handles by pasting the raw transcript, so it must not take the daemon down with it."""
+    not two. A failure is logged and swallowed: an unstartable server is exactly the case already
+    handled by pasting the raw transcript, so it must not take the daemon down with it."""
     started = set()
     for role in ("assistant", "cleanup_dictation", "cleanup_prompts"):
         cfg = router.resolve(role)
@@ -315,7 +314,7 @@ async def _drive(model, session: Session, utterance: str, on_delta=None,
     return "", "aborted"
 
 
-# The tool loop's round ceiling (spec/30): a tool-happy model that never settles on an answer is
+# The tool loop's round ceiling: a tool-happy model that never settles on an answer is
 # stopped, not looped forever. Five is generous for the Tier-1 tools — most turns take one round
 # to call a tool and one to speak the result.
 # ponytail: a flat cap; raise it if a legitimate multi-step task ever hits it.
@@ -329,9 +328,9 @@ async def _one_round(model, session: Session, tools):
     only the final answering round should reach the island (the streaming is _collect's job now).
     The utterance is always "" — the turn's input is already in session.history (the real user
     message on the first round, the tool results on later ones), so a round never appends a user
-    turn of its own (spec/20 continue path).
+    turn of its own.
 
-    Closes the generator deterministically (spec/20): an abort drops the provider request AT the
+    Closes the generator deterministically: an abort drops the provider request AT the
     cancel through the adapter's `finally`, rather than leaving it draining tokens nobody sees."""
     parts: list[str] = []
     calls: list[ToolCall] = []
@@ -351,7 +350,7 @@ async def _one_round(model, session: Session, tools):
                 log.info("model done: %s", ev.usage)
             elif isinstance(ev, Error):
                 if ev.kind == "malformed_tool_call":
-                    malformed = True          # spec/20: the tool loop owns the one retry
+                    malformed = True          # the tool loop owns the one retry
                 else:
                     err = ev.kind
                 log.error("model error/%s: %s", ev.kind, ev.detail)
@@ -364,18 +363,18 @@ async def _one_round(model, session: Session, tools):
 
 async def _collect(model, session: Session, utterance: str, on_delta=None,
                    tools=None, execute=None, on_usage=None) -> tuple[str, str | None]:
-    """Drive one assistant turn to a spoken answer, running the Contract T tool loop in between
-    (spec/30): the model may ask for tools, the orchestrator executes them and feeds the results
-    back, and this repeats until the model answers with no further tool call.
+    """Drive one assistant turn to a spoken answer, running the Contract T tool loop in between:
+    the model may ask for tools, the orchestrator executes them and feeds the results back, and
+    this repeats until the model answers with no further tool call.
 
     Returns (reply_text, error_kind_or_None). History is committed to `session.history` ONLY on
     success — a failed or aborted turn leaves it untouched, so the next turn never opens with a
     dangling user message (the invariant the old post-turn append protected).
 
     Generate-then-play: only the FINAL answering round reaches the overlay (via on_delta) —
-    the tool-use preamble rounds stay in history and the console, off the island (spec/40: the
-    island shows the answer, not the model working; THINKING already signals "working", D25). The
-    returned reply is that same final text.
+    the tool-use preamble rounds stay in history and the console, off the island (the island
+    shows the answer, not the model working; THINKING already signals "working"). The returned
+    reply is that same final text.
     """
     tools = tools or []
     working = list(session.history) + [{"role": "user", "content": utterance}]
@@ -387,8 +386,8 @@ async def _collect(model, session: Session, utterance: str, on_delta=None,
         if usage:
             total_tokens += (usage.get("input_tokens") or 0) + (usage.get("output_tokens") or 0)
         if malformed and not retried:
-            retried = True                            # spec/20: retry a malformed tool call once
-            log.info("malformed tool call — retrying the round once (spec/20)")
+            retried = True                            # retry a malformed tool call once
+            log.info("malformed tool call — retrying the round once")
             continue
         if err or malformed:
             return "", (err or "malformed_tool_call")
@@ -397,7 +396,7 @@ async def _collect(model, session: Session, utterance: str, on_delta=None,
         # and then reverted: the resample came back empty too, so it cured
         # nothing and only hid a fault we do not yet understand. A model returning literally
         # nothing is not sampling noise — inference would return *something*. Leave the bug
-        # visible until the cause is known; STATE, Track T carries the open investigation.
+        # visible until the cause is known; the investigation is still open.
         if not calls:
             if on_delta and text:
                 on_delta(text)                        # only the ANSWER reaches the overlay
@@ -423,12 +422,12 @@ async def _collect(model, session: Session, utterance: str, on_delta=None,
 
 def latency_table(trace) -> str:
     """Render per-turn latencies from an event trace against the targets (shared/schemas/
-    targets.json — one source, D25). Printed at the end of every live session and every replay
-    case (docs/04 §7)."""
+    targets.json — one source). Printed at the end of every live session and every replay
+    case."""
     from shared.config import load_schemas
     tg = load_schemas()["targets"]["targets"]
     # 'word' carries a [measured] tag, not a '<', because first_word is a diagnostic, not a
-    # gate (D25): under generate-then-play it is a reply-length proxy, so a fixed ceiling on it
+    # gate: under generate-then-play it is a reply-length proxy, so a fixed ceiling on it
     # would be a length cap wearing a stopwatch's clothes.
     out = [f"{'turn':<6}{'wake->listen':>13}{'eos->feedback':>15}{'eos->word':>11}"
            f"   (wake<{tg['wake_ack']['ms']} / feedback<{tg['feedback']['ms']} / "
@@ -444,8 +443,8 @@ def latency_table(trace) -> str:
             cur = {"eos": t, "listen": listen, "fb": None, "word": None}
             turns.append(cur)
             listen = None
-        # 'thinking' counts as feedback now (D25): the overlay state change is perceptible
-        # feedback (D16) and on a normal turn it is the FIRST of the three, so the column
+        # 'thinking' counts as feedback now: the overlay state change is perceptible
+        # feedback and on a normal turn it is the FIRST of the three, so the column
         # finally reflects the screen instead of only the audio path.
         elif cur is not None and ev in ("thinking", "earcon", "speak"):
             if cur["fb"] is None:
@@ -464,7 +463,7 @@ class Orchestrator:
                  auto_end: bool = False, hotkeys=None):
         self.silence_chunks = (silence_ms + VAD_CHUNK_MS - 1) // VAD_CHUNK_MS
         self.voice = voice
-        self.auto_end = auto_end                 # spec/70: end a keyed turn on VAD silence too
+        self.auto_end = auto_end                 # end a keyed turn on VAD silence too
         self.hk = hotkeys                        # None under replay/selfcheck: wake word only
         # The assistant model. An INJECTED model (replay/selfcheck) is used as-is; otherwise the
         # router resolves it from the user's model picker each turn (see _assistant_model), falling
@@ -476,7 +475,7 @@ class Orchestrator:
         self._cleanup = None                             # dictation cleanup model, built on first use
         self._cleanup_sig = None
         self.synth = synth                               # injectable: replay fakes TTS
-        # D24: dismissal arrives from the Teleprompter, which owns bare Esc because it alone
+        # Dismissal arrives from the Teleprompter, which owns bare Esc because it alone
         # knows when it is on screen. Set from the broadcaster's receive thread; every waiting
         # state polls it, and the single Dismissed handler in serve() does the unwinding — the
         # plumbing is unchanged from when the daemon owned the key, only the source moved.
@@ -487,10 +486,10 @@ class Orchestrator:
         self.fed_back = True                    # has this turn recorded perceptible feedback?
                                                 # True at rest so a stray mark before any turn
                                                 # cannot publish; reset to False per turn.
-        self.acted = False                      # did a Tier-2 tool succeed this turn? (D43) —
-                                                # False at rest, so a turn that never acted keeps
-                                                # the readable dwell, which is the safe default.
-        self.t_eos = time.perf_counter()        # spec/40 clock: VAD declared the turn over
+        self.acted = False                      # did a Tier-2 tool succeed this turn? False at
+                                                # rest, so a turn that never acted keeps the
+                                                # readable dwell, which is the safe default.
+        self.t_eos = time.perf_counter()        # turn clock: VAD declared the turn over
         self._loop: asyncio.AbstractEventLoop | None = None   # see _run_async()
         self.pump: OutputPump | None = None
         self.mic = None
@@ -506,11 +505,11 @@ class Orchestrator:
     # 'listening' is emitted by _capture (mic open); 'speaking'/'error' by _speak (its `state`
     # arg — so an error apology dwells in fault mode, not a bare reply view). 'speak' is
     # trace-only here.
-    # 'idle'/'dismissed' both mean "the daemon is free again" — NOT "blank the island" (D24).
+    # 'idle'/'dismissed' both mean "the daemon is free again" — NOT "blank the island".
     # The island is already gone on a dismiss (it hid itself the instant Esc was pressed, which
     # is why it, not the daemon, sends the verb), and after a normal turn it stays up until it
     # has finished revealing the answer plus its own dwell.
-    # Dictation adds three of its own (D2, spec/60): the STT and cleanup phases the assistant
+    # Dictation adds three of its own: the STT and cleanup phases the assistant
     # collapses into one 'thinking', plus a paste confirmation. `pasted` only reaches the wire
     # because it is here — otherwise `_ev("pasted")` would be trace-only.
     _EVENT_STATE = {"thinking": "thinking", "idle": "idle", "dismissed": "idle",
@@ -553,7 +552,7 @@ class Orchestrator:
         to the loop that created it, and that loop died with the turn. So each turn paid a new
         TCP+TLS handshake on the end-of-speech -> first-word path, and no adapter could have
         avoided it however well written. One loop for the process's life is the fix, and it is
-        the orchestrator's to give — hence Contract B's one-loop guarantee (spec/20); what an
+        the orchestrator's to give — hence Contract B's one-loop guarantee; what an
         adapter keeps across turns is then its own business.
 
         `serve()` deliberately stays synchronous. Making it a coroutine looks tempting and is
@@ -581,13 +580,13 @@ class Orchestrator:
     # --- feedback bookkeeping (something PERCEPTIBLE < 1.5 s after end of speech) ---
 
     def _feedback(self, what: str) -> None:
-        """Record time-to-first-perceptible-feedback, ONCE per turn (D16/D25).
+        """Record time-to-first-perceptible-feedback, ONCE per turn.
         Perceptible = the overlay's flip to THINKING, an earcon, or the first spoken word —
-        whichever lands first. Since D23 the screen is the primary surface, so on a normal
+        whichever lands first. The screen is the primary surface, so on a normal
         turn the near-instant THINKING state IS the feedback; the 'working' earcon is the
         speech-mode audio fallback. The instrument used to credit only AUDIO, so it reported
         our own 1.4 s working-timer every turn and gave the screen zero credit — a headset-era
-        measurement outliving the headset (D25)."""
+        measurement outliving the headset."""
         # ponytail: the check-then-set can race the working deadline firing on the loop thread
         # — worst case a duplicate latency line, not worth a lock for an instrument reading.
         if not self.fed_back:
@@ -598,7 +597,7 @@ class Orchestrator:
 
     def _ping(self, name: str) -> None:
         """Play one earcon by schema id — gated on the 'pings' setting (default on). Silent when
-        off: this is a visual-first app and the screen carries the turn (D28)."""
+        off: this is a visual-first app and the screen carries the turn."""
         if not settings.get("pings"):
             return
         self.pump.play(earcon_samples(name))
@@ -617,8 +616,8 @@ class Orchestrator:
     @staticmethod
     def _mic_level(samples) -> float:
         """RMS of an int16 mic chunk mapped to [0,1] — drives the overlay bars while a
-        capture window is open (spec/50 truthful indicator). Whether barge-in monitoring
-        during SPEAKING should emit it too is an open decision (STATE, Track P)."""
+        capture window is open, so the bars move only while the mic is really open. Whether
+        barge-in monitoring during SPEAKING should emit it too is an open decision."""
         import numpy as np
         rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
         return min(1.0, rms / MIC_LEVEL_REF)
@@ -627,12 +626,12 @@ class Orchestrator:
         """One utterance by VAD. Returns float32 mono audio, or None if nothing said.
         seed = chunks already heard (a barge-in trigger) — the turn starts mid-speech,
         so the VAD keeps its warm state. door = the hotkey that opened this capture, which
-        then owns the endpoint (D20, `capture_over`); None on a wake-word turn."""
+        then owns the endpoint (`capture_over`); None on a wake-word turn."""
         import numpy as np
 
         if seed is None:
             self.vad.reset()
-        # Dictation's endpoint is the key, not the clock (D20): a long dictation would otherwise
+        # Dictation's endpoint is the key, not the clock: a long dictation would otherwise
         # hit the assistant's 30 s runaway cap and truncate mid-sentence. Give the dictate door a
         # far larger backstop; the assistant keeps the tight cap (a spoken question is short).
         max_chunks = DICTATION_MAX_CHUNKS if (door is not None and door.name == "dictate") else MAX_CHUNKS
@@ -645,7 +644,7 @@ class Orchestrator:
             captured.append(s)
             eos.update(True)
         # BINDING INVARIANT: opening a capture window clears the previous turn — the island
-        # must never show the mic bars over a stale answer. Since D24 that clearing IS
+        # must never show the mic bars over a stale answer. That clearing IS
         # `listening` (status.json `clearsTurn`), so no caller can skip it: it used to be a
         # separate `idle` published here, and before that a blank in serve() alone, which the
         # barge-in entrance bypassed — that is precisely how bars came to be drawn over the
@@ -675,7 +674,7 @@ class Orchestrator:
                 raise Dismissed
             fired = eos.update(self.vad.prob(samples) >= VAD_THRESHOLD)
             if door is not None and door.end.is_set():
-                break                               # the key is the endpoint (D20)
+                break                               # the key is the endpoint
             if capture_over(fired, eos, door is not None, self.auto_end):
                 break
         if eos.total >= eos.max_chunks:
@@ -690,11 +689,11 @@ class Orchestrator:
     # --- the states ---
 
     def _persona(self) -> str:
-        """The system prompt for one turn: the voice, who it is speaking to (spec/70's Profile
-        rows), plus a line naming the connectors the user has switched off (D38). A method rather
-        than an inline expression so the selfcheck can assert on it without standing up a whole
-        turn — the wiring is the half that used to be unguarded, and a hidden tool the model is
-        NOT told about is exactly the D36 failure.
+        """The system prompt for one turn: the voice, who it is speaking to (the Profile rows),
+        plus a line naming the connectors the user has switched off. A method rather than an
+        inline expression so the selfcheck can assert on it without standing up a whole turn —
+        the wiring is the half that used to be unguarded, and a hidden tool the model is NOT
+        told about makes it deny a capability it has.
 
         Profile before connectors: who you are talking to belongs with the voice, while the
         switched-off line is about this machine's reach. Both are "" when unset, so an untouched
@@ -702,14 +701,13 @@ class Orchestrator:
         return DEFAULT_SYSTEM + profile_note() + disabled_note()
 
     def _run_tool_seen(self, call, transcript: str) -> tuple[str, str]:
-        """Run one tool with the island told, before and after (D38), and ANNOUNCED at Tier 2.
+        """Run one tool with the island told, before and after, and ANNOUNCED at Tier 2.
 
         The `finally` is the point: the 'done' message has to go out on the refused and errored
         paths too, or a failed call leaves the indicator naming work that stopped — and an
-        indicator that can lie about reaching your mail is worse than none (spec/50 rule 4's
-        posture, applied to tools).
+        indicator that can lie about reaching your mail is worse than none.
 
-        The announce is Tier 2's gate (spec/30's tier table). A Tier-1 tool only reads, so it
+        The announce is Tier 2's gate. A Tier-1 tool only reads, so it
         needs no sound; a Tier-2 tool CHANGED something without being asked twice, and one ping
         is what stops that being entirely silent. A refusal pings `failure` alongside a fault:
         from where the user is sitting, an action that did not happen is the one event, however
@@ -723,25 +721,25 @@ class Orchestrator:
             self.bc.publish(m_tool(call.name, done=True))
             if tool_tier(call.name) >= 2:
                 ok = outcome == "ok"
-                # This turn DID something, which is what earns it the short dwell (D43). Only on
+                # This turn DID something, which is what earns it the short dwell. Only on
                 # a real success: a REFUSED action produces a sentence explaining why, and that
                 # is something to read, not something you watched happen.
                 self.acted = self.acted or ok
                 # ponytail: gated on 'pings' like every other earcon, so a quiet mode really is
                 # quiet. That leaves a Tier-2 action with no cue at all while the tool indicator
-                # is unbuilt (STATE, Track P) — the reason it is written down rather than solved
+                # is unbuilt — the reason it is written down rather than solved
                 # here is that the fix is the INDICATOR, not a second sound the toggle ignores.
                 self._ping("success" if ok else "failure")
 
     def _turn(self, audio):
         """THINKING → SPEAKING, or held (shown, not spoken), for one utterance. Returns the
         next utterance's audio — only a barge-in produces one now — or None to end the chain,
-        after which the answer stays on the island until the overlay hides it (D24)."""
+        after which the answer stays on the island until the overlay hides it."""
         self.fed_back = False
-        self.acted = False                      # set by a Tier-2 tool that succeeds (D43)
+        self.acted = False                      # set by a Tier-2 tool that succeeds
         self._ev("thinking", show="[thinking]")
-        self._feedback("overlay thinking")      # D25: the screen is the feedback now (D23) —
-                                                # near-instant, and finally credited
+        self._feedback("overlay thinking")      # the screen is the feedback now — near-instant,
+                                                # and finally credited
 
         text = transcribe(audio)
         if not text:
@@ -751,10 +749,10 @@ class Orchestrator:
             return None                         # ends the chain; the wake watch resumes
         self._ev("transcript", text, show=f"> {text}")
 
-        # The 'working' earcon is retired (D28): since D23/D25 the overlay's THINKING state IS
+        # The 'working' earcon is retired: the overlay's THINKING state IS
         # the feedback, so nothing pings while the model runs — the screen carries it.
         usage_box = {"tokens": 0}
-        # D38: the persona plus a line naming the connectors the user has switched off. Set per
+        # The persona plus a line naming the connectors the user has switched off. Set per
         # TURN, not per session, because settings are re-read each turn — and stated in prose
         # because a hidden tool is merely absent, which the model reads as "no such capability
         # exists" and papers over. `disabled_note()` is "" when nothing is off, leaving the
@@ -764,7 +762,7 @@ class Orchestrator:
             self._assistant_model(), self.session, text,
             on_delta=lambda d: self.bc.publish(m_response(delta=d)),
             abort=self._abort_flag(),
-            tools=tool_specs(),                 # Contract T: implemented, in-tier, connected (spec/30)
+            tools=tool_specs(),                 # Contract T: implemented, in-tier, connected
             execute=lambda c: self._run_tool_seen(c, text),
             on_usage=lambda n: usage_box.__setitem__("tokens", n),
         ))
@@ -779,8 +777,8 @@ class Orchestrator:
                 return self._speak(self.synth(spoken_error(kind), self.voice), state="error")
             return None      # TTS off: the fault MESSAGE shows on the overlay (as no_transcript does)
         # Reply complete: stamp the model that produced it + the turn's total tokens, so the peek
-        # footer can name them (D34). getattr — a replay/fake model may carry no `.model`.
-        # ...and how long the island should keep it (D43). "quick" needs BOTH halves: the turn
+        # footer can name them. getattr — a replay/fake model may carry no `.model`.
+        # ...and how long the island should keep it. "quick" needs BOTH halves: the turn
         # acted, AND there is nothing to read. A turn that opened Spotify and then answered a
         # question in the same breath still has an answer in it, so it keeps the full dwell —
         # `sentences()` is the same one-line test the speak/hold split already uses.
@@ -791,9 +789,9 @@ class Orchestrator:
         # History is committed inside _collect now (it must persist tool rounds mid-turn, and only
         # on success), so there is no post-turn append here any more.
         # The hold survives; the "say 'read it'" escape hatch does not. Holding is what stops
-        # a long answer being read AT you (spec/40, never lecture uninvited) — it means SHOWN,
-        # not spoken, and pings `success` (D28) so a long answer you may have glanced away from
-        # gets one soft "it's ready". (Read-all-when-TTS-on is parked for M0.5, spec/40.)
+        # a long answer being read AT you (never lecture uninvited) — it means SHOWN,
+        # not spoken, and pings `success` so a long answer you may have glanced away from
+        # gets one soft "it's ready". (Read-all-when-TTS-on is parked for later.)
         if sentences(reply) > 2:
             self._ping("success")
             self._ev("held", show="[answer shown, not spoken]")
@@ -805,7 +803,7 @@ class Orchestrator:
 
     def _speak(self, samples, state: str = "speaking"):
         """SPEAKING: play via the pump while watching the mic — user speech cuts TTS
-        ≤ 250 ms and becomes the next utterance (spec/40, binding). `state` is the overlay
+        ≤ 250 ms and becomes the next utterance (binding). `state` is the overlay
         mode shown while playing — 'speaking' normally, 'error' while reading an apology so
         the island dwells in fault mode instead of a bare reply view."""
         self._flush_mic()
@@ -868,7 +866,7 @@ class Orchestrator:
 
     def _enter(self, door, t0: float) -> None:
         """The entrance ritual, wherever a turn is opened from: trace the entrance so the
-        latency table can measure press/wake -> indication (spec/40), and sound the `listening`
+        latency table can measure press/wake -> indication, and sound the `listening`
         earcon (gated on 'pings') so the press is audibly acknowledged.
 
         Every path that opens a turn goes through here. The two that did NOT are how the
@@ -885,7 +883,7 @@ class Orchestrator:
     def _pressed(self):
         """The door whose hotkey just opened a capture — the **ask** door or the **dictate**
         door — else None (a wake-word turn). The caller routes on `door.name`: 'ask' runs the
-        assistant turn, 'dictate' runs the dictation pipeline (spec/60).
+        assistant turn, 'dictate' runs the dictation pipeline.
 
         `start` is cleared here (we are taking the turn); `end` is the module's to clear on the
         next press, and `_capture()`'s finally calls `door.close()` when the capture really ends.
@@ -901,9 +899,9 @@ class Orchestrator:
 
     def _assistant_model(self):
         """The answer model for this turn. An injected model (replay/selfcheck) is used unchanged;
-        otherwise the router resolves it from the user's model picker (spec/20 §Routing), falling
+        otherwise the router resolves it from the user's model picker, falling
         back to the daemon default when no primary is configured. Cached across turns while the
-        routed config is unchanged, so the client is kept (spec/20 adapter lifetime) but a change
+        routed config is unchanged, so the client is kept but a change
         in the picker lands on the next turn with no restart."""
         if self._injected_model:
             return self.model
@@ -915,9 +913,9 @@ class Orchestrator:
         return self.model
 
     def _cleanup_model(self):
-        """The dictation cleanup model: the router's `cleanup_dictation` role (spec/20 §Routing),
-        or the Groq default (D15/S-06) when unconfigured. Cached across turns while its config is
-        unchanged (spec/20 adapter lifetime), yet a picker change lands on the next dictation. Lazy:
+        """The dictation cleanup model: the router's `cleanup_dictation` role, or the Groq
+        default when unconfigured. Cached across turns while its config is unchanged,
+        yet a picker change lands on the next dictation. Lazy:
         dictation may never be used in a session, and building it reads the credential store."""
         sig = router.signature("cleanup_dictation")
         if self._cleanup is None or sig != self._cleanup_sig:
@@ -944,7 +942,7 @@ class Orchestrator:
         to pull, so a round here would spend real quota to save nothing.
         """
         # The role's CACHED builder where one exists, so the adapter warmed is the adapter the
-        # turn will use — its connection pool included (spec/20 adapter lifetime). A role without
+        # turn will use — its connection pool included. A role without
         # one gets a throwaway; it still warms the runner, which is where the 9 s actually lives.
         builders = {"assistant": self._assistant_model, "cleanup_dictation": self._cleanup_model}
         seen: set[tuple[str, str]] = set()
@@ -978,15 +976,15 @@ class Orchestrator:
                 log.exception("preload: %s %s failed — it will load on first use", pid, model_id)
 
     def _dictate(self, audio) -> None:
-        """A dictation turn (spec/60): transcribe → clean up → paste at the caret. No model
+        """A dictation turn: transcribe → clean up → paste at the caret. No model
         answer and no follow-up chain — the key was the endpoint and the text goes to whatever
         app has focus. Cleanup is an ENHANCEMENT, not a gate: if it is unavailable the raw
         transcript is delivered, so dictation still works with no cleanup key and, in that case,
-        nothing leaves the machine. The user can also turn it off outright ('Tidy dictation',
-        spec/70), which is the same delivery path."""
+        nothing leaves the machine. The user can also turn it off outright ('Tidy
+        dictation'), which is the same delivery path."""
         self.fed_back = False                       # a fresh turn: let it record feedback once
-        self._ev("transcribing", show="[dictation: transcribing]")   # own state, not 'thinking' (D2)
-        self._feedback("overlay thinking")          # D25: the screen is the feedback
+        self._ev("transcribing", show="[dictation: transcribing]")   # own state, not 'thinking'
+        self._feedback("overlay thinking")          # the screen is the feedback
 
         text = transcribe(audio)
         if not text:
@@ -995,18 +993,18 @@ class Orchestrator:
             self._ev("no-transcript", show="(no transcript)")
             self._publish_state("idle")
             return
-        # D15 (spec/60): deterministic word-replacement runs BEFORE cleanup — a lookup, not a
+        # Deterministic word-replacement runs BEFORE cleanup — a lookup, not a
         # model guess, so known acronym/name/jargon fixes land even when cleanup is off.
         text = apply_replacements(text)
         # mirror=False: the transcript is traced for the harness but pastes at the caret — it is
-        # never shown on the island and must not join the assistant's prompt history (D2).
+        # never shown on the island and must not join the assistant's prompt history.
         self._ev("transcript", text, show=f"> {text}", mirror=False)
 
-        # 'Tidy dictation' (spec/70): off means paste exactly what was said — no transform, and
+        # 'Tidy dictation': off means paste exactly what was said — no transform, and
         # no 'transforming' state either, since showing "Tidying…" while nothing tidies would be
         # a lie. Read fresh like every setting, so a flip lands on the next turn.
         if settings.get("cleanup_dictation_on"):
-            self._ev("transforming", show="[dictation: cleaning up]")    # own state (D2)
+            self._ev("transforming", show="[dictation: cleaning up]")    # own state
             cleaned, err = self._run_async(
                 transform(self._cleanup_model(), text, DICTATION_CLEANUP))
             if err or not cleaned:
@@ -1031,13 +1029,13 @@ class Orchestrator:
         """The IDLE→wake→turn-chain loop against a mic, pump and wake model — real
         devices from run(), fakes from the replay harness (eval/replay.py)."""
         self.pump, self.mic = pump, mic
-        ring: deque = deque(maxlen=BUFFER_BLOCKS)   # ≤3 s pre-trigger audio, RAM only (spec/50)
+        ring: deque = deque(maxlen=BUFFER_BLOCKS)   # ≤3 s pre-trigger audio, RAM only, never written to disk
         while True:
             # IDLE: wake watch
             block, _ = mic.read(BLOCK_SAMPLES)
             frame = block[:, 0]
             ring.append(frame)
-            # Two entrances to the same door (D20): the ask hotkey and the wake phrase.
+            # Two entrances to the same door: the ask hotkey and the wake phrase.
             door = self._pressed()
             if door is None and not any(s >= THRESHOLD
                                         for s in wake_model.predict(frame).values()):
@@ -1055,7 +1053,7 @@ class Orchestrator:
             t_wake = time.perf_counter()
             self._enter(door, t_wake)
             # ponytail: fresh history each wake-chain — whether it should persist
-            # across wakes is an open question (parked; STATE), so it dies at IDLE.
+            # across wakes is an open question (parked), so it dies at IDLE.
             self.session = Session(id=time.strftime("%H%M%S"))
 
             try:
@@ -1064,16 +1062,16 @@ class Orchestrator:
                 if utt is None:
                     self._ev("nothing-heard", show="[nothing heard]")
                 elif door is not None and door.name == "dictate":
-                    self._dictate(utt)          # spec/60: standalone, no assistant chain
+                    self._dictate(utt)          # standalone, no assistant chain
                 else:
                     while utt is not None:      # the turn chain: barge-ins
                         utt = self._turn(utt)
             except Dismissed:
-                # One handler for every state (spec/40): whatever was in flight — an open
+                # One handler for every state: whatever was in flight — an open
                 # mic, a streaming model call, TTS mid-sentence — stops here. The island is
                 # already gone; it hid itself the instant Esc landed and told us afterwards.
                 # The working-earcon deadline needs no cancel here: it lives inside _drive and
-                # was already cancelled when the aborted turn returned (G-03).
+                # was already cancelled when the aborted turn returned.
                 pump.cut()
                 if self.hk is not None:
                     self.hk.reset()             # no door left mid-toggle by the abandon
@@ -1083,7 +1081,7 @@ class Orchestrator:
             # Published BEFORE the wake flush, so the island's dwell clock
             # starts when the turn actually ended. `idle` says the DAEMON is free — it no
             # longer blanks anything, because how long the answer stays up is a fact about
-            # the reveal, which only the island can see (D24).
+            # the reveal, which only the island can see.
             self._ev("idle", show="[idle]")
             self._flush_wake(wake_model)        # else the old phrase re-triggers
 
@@ -1102,7 +1100,7 @@ class Orchestrator:
         self._ready = False
         self._publish_state("booting")
         t0 = time.perf_counter()
-        # D39 — warm-up is split by WHEN a model is first needed, not loaded as one block.
+        # Warm-up is split by WHEN a model is first needed, not loaded as one block.
         # serve()'s idle loop calls wake_model.predict() on every block, and _capture needs
         # the VAD, so those two must exist before we serve: they stay here. Whisper is not
         # needed until a capture ENDS and Kokoro not until the model has answered, so both go
@@ -1115,8 +1113,8 @@ class Orchestrator:
         log.info("wake + VAD ready in %.1f s — doors opening", time.perf_counter() - t0)
 
         def _warm() -> None:
-            """The heavy models, off the critical path. Both lazy-init behind their own lock
-            (D39), so an early keypress that beats this thread waits for the same load rather
+            """The heavy models, off the critical path. Both lazy-init behind their own lock,
+            so an early keypress that beats this thread waits for the same load rather
             than starting a second one."""
             try:
                 # A local model server is warm-up too, and the slowest kind: it must be running
@@ -1126,10 +1124,10 @@ class Orchestrator:
                 _start_local_servers()
                 _warn_missing_models()          # after the server is up, or it has nothing to ask
                 transcribe(np.zeros(SAMPLE_RATE // 2, dtype=np.float32))   # whisper + GPU warm
-                # Kokoro is NOT preloaded: `tts` is off by default (D23), so this was loading
+                # Kokoro is NOT preloaded: `tts` is off by default, so this was loading
                 # a model and discarding its audio on most starts. synth() lazy-loads on first
                 # use, which is also the only correct answer when tts is toggled on mid-session
-                # (settings are re-read every turn, D28).
+                # (settings are re-read every turn).
                 if settings.get("tts"):
                     synth("ready")                                         # discarded
                 log.info("warm-up done in %.1f s", time.perf_counter() - t0)
@@ -1149,7 +1147,7 @@ class Orchestrator:
                 self._ready = True
             # AFTER the doors open, deliberately, and outside the try/finally above so it can
             # never delay them: pulling weights into VRAM takes ~9 s per model, and holding
-            # `_ready` for that would trade a slow first answer for a DROPPED first press (D41).
+            # `_ready` for that would trade a slow first answer for a DROPPED first press.
             # The cost of running late is only that a press in the first few seconds waits for
             # the same load it would have waited for anyway.
             self._preload_local_models()
@@ -1180,7 +1178,7 @@ class FakeReply:
 def _selfcheck() -> None:
     """No mic/models/network: the orchestrator's pure decision logic. (End-of-speech
     timing is listen.py's selfcheck; pump buffer discipline is speak.py's.)"""
-    # speak/hold split (spec/40 narration heuristic)
+    # speak/hold split (sentence count)
     assert sentences("Yes.") == 1
     assert sentences("It is 3 pm. Tokyo is nine hours ahead.") == 2
     assert sentences("One. Two! Three?") == 3
@@ -1188,7 +1186,7 @@ def _selfcheck() -> None:
     assert sentences("Wait... sure.") == 2            # a '...' run counts once
 
 
-    # capture endpoint (D20): the key owns a keyed turn; the wake path is unchanged
+    # capture endpoint: the key owns a keyed turn; the wake path is unchanged
     spoke = EndOfSpeech(silence_chunks=2, max_chunks=100, nospeech_chunks=3)
     for f in (True, False):                           # speech, then a silence run
         spoke.update(f)
@@ -1210,7 +1208,7 @@ def _selfcheck() -> None:
     # BINDING INVARIANT: a capture window clears the previous turn BEFORE the mic opens,
     # whichever entrance opened it. Regressing this draws the mic bars over the last reply
     # (it did: the barge-in path skipped the clear, which lived in serve()).
-    # Since D24 the clear IS `listening`, so the guarantee no longer depends on a caller
+    # The clear IS `listening`, so the guarantee no longer depends on a caller
     # remembering to blank first — but only while the contract agrees, hence the cross-check.
     from shared.config import load_schemas
     assert "listening" in load_schemas()["status"]["clearsTurn"], \
@@ -1257,7 +1255,7 @@ def _selfcheck() -> None:
     reply, err = asyncio.run(_drive(FakeReply("Fine."), Session(id="t"), "hi"))
     assert (reply, err) == ("Fine.", None), (reply, err)
 
-    # The Contract T tool loop (spec/30): a round that asks for a tool must run the tool, feed the
+    # The Contract T tool loop: a round that asks for a tool must run the tool, feed the
     # result back into history, and drive a SECOND round that answers with it — and the whole turn
     # commits to history only on success. This is the new logic in _collect; the fakes below stand
     # in for a real model's ToolCall/record_tool_round surface.
@@ -1289,7 +1287,7 @@ def _selfcheck() -> None:
     assert sess.history[0] == {"role": "user", "content": "what time is it?"}, sess.history
     assert sess.history[-1] == {"role": "assistant", "content": "It is noon."}, sess.history
 
-    # spec/20: exactly one retry on a malformed tool call, then recover.
+    # Exactly one retry on a malformed tool call, then recover.
     class _MalformedOnce:
         def __init__(self): self.n = 0
         @staticmethod
@@ -1320,7 +1318,7 @@ def _selfcheck() -> None:
                                     tools=tool_specs(), execute=lambda c: ("", "ok")))
     assert (reply, err) == ("", None) and ae.n == 1, f"empty round ends the turn (rounds={ae.n})"
 
-    # A model that never stops calling tools is capped, not looped forever (spec/30).
+    # A model that never stops calling tools is capped, not looped forever.
     class _AlwaysTool:
         @staticmethod
         def record_tool_round(*a): pass
@@ -1330,7 +1328,7 @@ def _selfcheck() -> None:
                                     tools=tool_specs(), execute=lambda c: ("ok", "ok")))
     assert (reply, err) == ("", "unknown"), (reply, err)
 
-    # ONE event loop for the process, not one per turn (spec/20 adapter lifetime). A per-turn
+    # ONE event loop for the process, not one per turn. A per-turn
     # loop made connection reuse impossible for EVERY provider, not just B1 — an HTTP pool
     # belongs to the loop that built it, and that loop died with the turn.
     loops = Orchestrator(model=object(), broadcaster=_Rec())
@@ -1369,7 +1367,7 @@ def _selfcheck() -> None:
     assert closed == ["closed"], \
         "an aborted turn must close the model's stream before _drive returns"
 
-    # D24: the dismiss signal is no longer a key this process owns — it arrives as a Contract P
+    # The dismiss signal is no longer a key this process owns — it arrives as a Contract P
     # line from the Teleprompter, which holds bare Esc because it alone knows when it is on
     # screen. Drive the WHOLE seam: a line off the wire must cancel a streaming model call
     # exactly as the old keypress did. Breaking any link (broadcaster allowlist, the on_dismiss
@@ -1380,7 +1378,7 @@ def _selfcheck() -> None:
     assert wired._dismissed(), "an upstream dismiss must reach the orchestrator"
     assert not wired._dismissed(), "the signal is consumed once, not latched"
     wired.bc._upstream(b'{"type":"state","state":"idle"}')
-    assert not wired._dismissed(), "only 'dismiss' may cross upstream (spec/50 rule 12)"
+    assert not wired._dismissed(), "only 'dismiss' may cross upstream"
 
     threading.Timer(0.15, lambda: wired.bc._upstream(b'{"type":"dismiss"}')).start()
     t0 = time.perf_counter()
@@ -1431,11 +1429,11 @@ def _selfcheck() -> None:
     assert len(lines) == 3, tbl
     assert "100" in lines[1] and "50" in lines[1] and "2500" in lines[1], lines[1]
     assert lines[2].count("800") == 2 and "-" in lines[2], lines[2]
-    # The header quotes targets.json, not four hardcoded copies (D25), and first_word is a
+    # The header quotes targets.json, not four hardcoded copies, and first_word is a
     # measured diagnostic, not a gate — so it is tagged, never a "<".
     assert "targets.json" in lines[0] and "[measured]" in lines[0], lines[0]
 
-    # D25 reframe: the overlay's flip to THINKING is perceptible feedback (D16), and on a
+    # The overlay's flip to THINKING is perceptible feedback, and on a
     # normal turn it lands FIRST — so the feedback column must credit it, not a later earcon.
     # Without 'thinking' in the crediting set the instrument credited only audio (the headset-era
     # measurement it replaces).
@@ -1459,7 +1457,7 @@ def _selfcheck() -> None:
     fb._feedback("'success' earcon")            # a later audio event must NOT re-publish
     assert len(fb.bc.fb) == 1, f"feedback recorded {len(fb.bc.fb)} times, must be once"
 
-    # D28: earcons obey the 'pings' setting (default on) — a visual-first quiet mode is one toggle
+    # Earcons obey the 'pings' setting (default on) — a visual-first quiet mode is one toggle
     # away. Point settings at a throwaway file so the real config is untouched; a stub pump counts
     # plays without a device.
     import os
@@ -1481,8 +1479,8 @@ def _selfcheck() -> None:
         pg._ping("failure")
         assert pg.pump.n == 1, "pings on must play the earcon"
 
-        # spec/30's tier table: a Tier-2 tool ANNOUNCES itself as it returns; a Tier-1 one does
-        # not. That announce is the whole of Tier 2's gate — without it, "not-hal may act without
+        # The tier table: a Tier-2 tool ANNOUNCES itself as it returns; a Tier-1 one does
+        # not. That announce is the whole of Tier 2's gate — without it, "the app may act without
         # asking" would mean acting with no cue at all. The tier is read from the registry, so
         # this also proves the orchestrator asks rather than keeping its own list of names.
         # run_tool is stubbed: the real one would open an app and move a window.
@@ -1496,11 +1494,11 @@ def _selfcheck() -> None:
 
         tt._run_tool_seen(ToolCall("a", "system_status", {}), "hi")
         assert earcons() == [], f"a Tier-1 tool only reads — it must stay silent: {earcons()}"
-        assert tt.acted is False, "reading is not acting (D43)"
+        assert tt.acted is False, "reading is not acting"
 
         tt._run_tool_seen(ToolCall("b", "open_app", {"app": "x"}), "hi")
         assert earcons() == ["success"], earcons()
-        assert tt.acted is True, "a Tier-2 tool that succeeded DID act (D43)"
+        assert tt.acted is True, "a Tier-2 tool that succeeded DID act"
 
         # A refusal announces too, as a failure: from where the user is sitting, an action that
         # did not happen is one event however it failed to happen. But it did NOT act — its reply
@@ -1509,7 +1507,7 @@ def _selfcheck() -> None:
         outcome_box["v"] = "refused:connector_apps_media"
         tt._run_tool_seen(ToolCall("c", "open_app", {"app": "x"}), "hi")
         assert earcons() == ["success", "failure"], earcons()
-        assert tt.acted is False, "a REFUSED action must not shorten the dwell (D43)"
+        assert tt.acted is False, "a REFUSED action must not shorten the dwell"
 
         # The dwell hint itself: 'quick' needs both halves, and anything else must fall back to
         # the readable dwell. This is the expression _turn stamps onto the done message.
@@ -1528,7 +1526,7 @@ def _selfcheck() -> None:
         run_tool = _real_run_tool
     os.environ.pop("NOTHAL_SETTINGS", None)
 
-    # --- dictation (Track D, spec/60): dispatch by door, and the cleanup-fallback pipeline ---
+    # --- dictation: dispatch by door, and the cleanup-fallback pipeline ---
     # _pressed distinguishes the two doors by name; the caller routes on it. A dictate press must
     # never be fed to the model — the seam to guard (_pressed has two
     # callers). Ask wins a simultaneous press.
@@ -1561,14 +1559,14 @@ def _selfcheck() -> None:
     # DROPS a press while it is off, so a turn is never attempted against an unloaded model.
     assert disp._ready is True, "the boot gate must default open — replay/selfcheck are not gated"
 
-    # D37 spoken list commands (spec/60). Detection lives in the PROMPT, so the real proof is
+    # Spoken list commands. Detection lives in the PROMPT, so the real proof is
     # `--check-format` against the live model; what is checkable offline is that the contract is
     # still stated. An edit that drops a command, the separator rule or the mention-vs-command
     # guard fails silently otherwise — it only shows up later as bad dictation.
     for _phrase in ("enumerate list", "itemize list", "end list"):
         assert _phrase in DICTATION_CLEANUP, f"list command missing from the prompt: {_phrase}"
     assert "numbered list to the contract" in DICTATION_CLEANUP, \
-        "the mention-vs-command guard (the D37 failure mode) must stay in the prompt"
+        "the mention-vs-command guard must stay in the prompt"
 
 
     # _dictate: transcribe -> clean -> paste, with the whole pipeline faked (no whisper, no
@@ -1594,7 +1592,7 @@ def _selfcheck() -> None:
         di.pump, di._cleanup = _Pump(), object()      # object() skips build_model (keyring/net)
         di._dictate(object())
         assert pasted == ["Hello there."], pasted
-        # D2: dictation drives its own states, not the assistant's 'thinking'. The transcript is
+        # Dictation drives its own states, not the assistant's 'thinking'. The transcript is
         # mirror=False, so it never appears in the broadcast — only these four states do.
         assert di.bc.states == ["transcribing", "transforming", "pasted", "idle"], di.bc.states
 
@@ -1643,10 +1641,10 @@ def _selfcheck() -> None:
         g.update(_orig)
 
 
-    # D38: the persona the model receives must NAME a connector the user switched off. Guarding
+    # The persona the model receives must NAME a connector the user switched off. Guarding
     # `disabled_note()` alone proved the SENTENCE was right; this proves it is actually attached,
     # which is the half that would fail silently — a hidden tool the model is not told about is
-    # the can't-rendered-as-didn't failure of D36, not merely an unhelpful answer.
+    # the can't-rendered-as-didn't failure, not merely an unhelpful answer.
     import tempfile as _tf
     from pathlib import Path as _P
     from shared import settings as _st
@@ -1663,7 +1661,7 @@ def _selfcheck() -> None:
             _st.set(_k, True)
         assert _o._persona() == DEFAULT_SYSTEM, _o._persona()
 
-        # spec/70's Profile rows reach the model. An UNSET profile must leave the prompt
+        # The Profile rows reach the model. An UNSET profile must leave the prompt
         # untouched (asserted just above), so this only has to prove the wiring and that a
         # blank row contributes nothing — the same silent-drop failure as the connector line.
         _st.set("profile_name", "David Bowman")
@@ -1687,7 +1685,7 @@ def _selfcheck() -> None:
         assert _o._persona() == DEFAULT_SYSTEM, "a cleared profile must restore the plain voice"
     os.environ.pop("NOTHAL_SETTINGS", None)
 
-    # --- the boot preload (ROADMAP, 2026-08-04): local weights are pulled into VRAM at start-up,
+    # --- the boot preload: local weights are pulled into VRAM at start-up,
     # not on the first turn. Three things worth guarding, each cheap to get wrong and expensive
     # to notice.
     with _tf.TemporaryDirectory() as _tmp:
@@ -1741,11 +1739,11 @@ def _selfcheck() -> None:
     os.environ.pop("NOTHAL_SETTINGS", None)
 
     print("selfcheck OK: speak/hold split, capture endpoint, barge-in counter, error lines, "
-          "latency table + targets, feedback credits the screen (D25), pings toggle gates earcons, "
-          "Tier 2 announces and Tier 1 stays silent (spec/30), "
-          "dictation dispatch + cleanup-fallback-to-raw + the tidy toggle (spec/60), "
-          "the persona names switched-off connectors (D38) and carries the user's profile, "
-          "D37 list commands declared in the cleanup prompt, "
+          "latency table + targets, feedback credits the screen, pings toggle gates earcons, "
+          "Tier 2 announces and Tier 1 stays silent, "
+          "dictation dispatch + cleanup-fallback-to-raw + the tidy toggle, "
+          "the persona names switched-off connectors and carries the user's profile, "
+          "list commands declared in the cleanup prompt, "
           "the boot preload warms local weights once per model and never a cloud one")
 
 
@@ -1764,7 +1762,7 @@ def _catch_polite_stop() -> None:
 
     This is what run.py's shutdown depends on. It asks politely before it insists with
     terminate(), precisely so the daemon can stop a local model server it started — and without
-    the handler the asking WAS the killing, so a server not-hal launched was left running on every
+    the handler the asking WAS the killing, so a server the app launched was left running on every
     quit. Verified live on Windows: the log showed `starting ollama headless` and never the
     matching stop.
     """
@@ -1779,7 +1777,7 @@ def _catch_polite_stop() -> None:
 def main() -> None:
     setup_logging()
     _catch_polite_stop()
-    ap = argparse.ArgumentParser(description="not-hal orchestrator — the M0 loop (Track G step 6)")
+    ap = argparse.ArgumentParser(description="Run the voice loop")
     ap.add_argument("--selfcheck", action="store_true",
                     help="verify decision logic without mic, models or network, then exit")
     ap.add_argument("--silence-ms", type=int, default=SILENCE_MS,
@@ -1788,7 +1786,7 @@ def main() -> None:
     ap.add_argument("--model", default=DAEMON_MODEL,
                     help=f"model id (default {DAEMON_MODEL}; env NOTHAL_MODEL)")
     ap.add_argument("--auto-end", action="store_true",
-                    help="end a hotkey turn on VAD silence too, instead of a second tap (spec/70)")
+                    help="end a hotkey turn on VAD silence too, instead of a second tap")
     args = ap.parse_args()
     if args.selfcheck:
         _selfcheck()
@@ -1799,11 +1797,11 @@ def main() -> None:
     except KeyboardInterrupt:
         print()  # clean newline after ^C
         if orch.trace:
-            print(latency_table(orch.trace))   # the session's metrics (docs/04 §7)
+            print(latency_table(orch.trace))   # the session's metrics
     finally:
-        # Ctrl-C reaches here, and so does run.py's shutdown since D39 asks with CTRL_BREAK before
+        # Ctrl-C reaches here, and so does run.py's shutdown, which asks with CTRL_BREAK before
         # it insists with terminate(). A hard kill skips this and leaves the server idling until
-        # its own keep-alive evicts the model — the Job Object tie (launcher C2) is the full fix.
+        # its own keep-alive evicts the model — a Windows Job Object tie is the full fix.
         _stop_local_servers()
 
 

@@ -1,11 +1,11 @@
-"""D37 format-quality eval (was backend.orchestrator --check-format). — Run:  python -m eval.format_check   |   python -m eval.format_check --selfcheck"""
+"""Format-quality eval (was backend.orchestrator --check-format). Run:  python -m eval.format_check   |   python -m eval.format_check --selfcheck"""
 from backend.orchestrator import (
     router, build_model, CLEANUP_PROVIDER, CLEANUP_MODEL, transform, DICTATION_CLEANUP,
 )
 
-# D37 (spec/60): what the spoken list commands must and must not do, as transcripts the STT would
-# actually produce — no punctuation, spelled-out counting. The last two are the point of the whole
-# feature: dictating ABOUT a list must stay prose.
+# What the spoken list commands must and must not do, as transcripts the STT would actually
+# produce — no punctuation, spelled-out counting. The last two are the point of the whole feature:
+# dictating ABOUT a list must stay prose.
 _FORMAT_CASES = [
     ("enumerate list one buy milk two collect the dry cleaning three call the bank end list "
      "then I went home",
@@ -19,7 +19,7 @@ _FORMAT_CASES = [
      "only the NEXT ordinal separates — a number inside an item is content"),
     ("please add a numbered list to the contract before we send it",
      [], ["1.", "- "],
-     "TALKING ABOUT a list must not become one (the D37 failure mode)"),
+     "TALKING ABOUT a list must not become one"),
     ("I asked them to itemize the costs in the schedule",
      [], ["1.", "- "],
      "...including a command verb used as an ordinary verb"),
@@ -60,7 +60,7 @@ def _format_verdict(out: str, want: list[str], unwanted: list[str]) -> tuple[lis
 
 
 def _check_format() -> None:
-    """D37, LIVE: run the list commands through the real `cleanup_dictation` model (spec/60).
+    """LIVE: run the list commands through the real `cleanup_dictation` model.
     Detection is prompt-side, so this is the check that actually proves it — the offline selfcheck
     can only prove the prompt still says so. Skips rather than fails when the cleanup engine is
     unreachable, so it stays runnable on a machine with no key."""
@@ -87,7 +87,7 @@ def _check_format() -> None:
     print(f"\nformat check OK: {len(_FORMAT_CASES)} cases, including the two mention cases")
 
 def _selfcheck() -> None:
-    # D37 scoring (offline half): the live run needs a model, but the VERDICT is pure. Both sides
+    # Scoring (offline half): the live run needs a model, but the VERDICT is pure. Both sides
     # must be case-insensitive — the asymmetry that existed until 2026-08-01 failed models for
     # capitalising a wanted phrase, which the prompt requires them to do.
     assert _format_verdict("List one is the priority.", ["list one"], ["1.", "- "]) == ([], []), \

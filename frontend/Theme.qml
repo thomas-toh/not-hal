@@ -31,15 +31,15 @@ QtObject {
     // CSS semantics: the line box is lineHeight * fontSize (Overlay applies it via
     // Text.FixedHeight). Keep lineHeight above ~1.2 or descenders start to clip.
     readonly property int  fontSize: 18
-    readonly property int  fontSizePrompt: 16        // peek prompt (context) — one step under the reply (D27)
-    readonly property int  fontSizeSmall: 12         // quiet controls: peek more/less toggle, generating cue (D27)
+    readonly property int  fontSizePrompt: 16        // peek prompt (context) — one step under the reply
+    readonly property int  fontSizeSmall: 12         // quiet controls: peek more/less toggle, generating cue
     // 600, not the mockup's 500: a grotesque UI face at 500 reads too light against the black
     // island, and Qt renders a touch thinner than a browser. Inter (the app face again since
     // 2026-07-31; Inter → Hanken → Archivo → Inter) is variable, so 550 also works if 600 is a
     // shade heavy.
     readonly property int  fontWeight: Font.DemiBold // 600
     readonly property real lineHeight: 1.3
-    readonly property real lineHeightTight: 1.15     // wrapped quiet context (peek prompt) — D27
+    readonly property real lineHeightTight: 1.15     // wrapped quiet context (peek prompt)
 
     // A point on the scrim ramp: f is the fraction of full strength (1.0 = opaquest). Lets a
     // gradient keep its own CURVE while the colour and peak strength stay tokenised.
@@ -50,20 +50,20 @@ QtObject {
     readonly property int durationScroll: 200        // teleprompter glide
     readonly property int durationBars: 90           // mic bar smoothing
     readonly property int durationFade: 220          // the island's entrance / exit
-    readonly property int durationPeek: 200          // expanded-view (peek) open/close — snappier than a turn resize (D27)
-    readonly property int durationHint: 120          // hover-hint nudge (D27)
+    readonly property int durationPeek: 200          // expanded-view (peek) open/close — snappier than a turn resize
+    readonly property int durationHint: 120          // hover-hint nudge
     // One WORD per tick, not one character: this is a teleprompter to be read, not a chat
     // stream to be skimmed. Matched to the scripted feed's cadence, which read well.
     readonly property int durationWord: 90
 
-    // ── dwells: how long finished content stays put (D24) ───────────────────
+    // ── dwells: how long finished content stays put ─────────────────────────
     // Both start from the moment the text has FINISHED revealing, which is why they can be
     // flat numbers. Their predecessors lived in the daemon and had to scale with word count,
     // because the daemon was estimating this side's typing speed — it guessed 0.45 s a word
     // and still blanked long answers mid-sentence. Measured from the right clock, a constant
     // is enough, and "N seconds after it finishes appearing" is a knob you can reason about.
     //
-    // Since D43 the ANSWER dwell is two numbers, not one, and both are the user's to set
+    // The ANSWER dwell is two numbers, not one, and both are the user's to set
     // (General > Preferences). What is here are the FALLBACKS — used if the setting cannot be
     // read, and they are the shipped defaults, so a normal run and a fallback run look the same.
     // The daemon says which of the two a turn wants ("quick" once it has acted, "slow" once it
@@ -71,13 +71,13 @@ QtObject {
     readonly property int durationPromptHold: 700     // prompt sits before the reply takes over
     readonly property int durationAnswerDwell: 20000  // an ANSWER sits before the island hides
     readonly property int durationActionDwell: 2500   // ...a CONFIRMATION, which has nothing to read
-    readonly property int durationPasteDwell: 2500    // dictation's "Pasted ✓" beat before hiding (D2)
+    readonly property int durationPasteDwell: 2500    // dictation's "Pasted ✓" beat before hiding
 
-    // ── settings window (D29, re-cut by D40) ────────────────────────────────
+    // ── settings window ─────────────────────────────────────────────────────
     // A second surface, not a second design system: the face and motion above are shared. Every
     // fill refers to a ROLE, so a palette change is this block alone.
     //
-    // D40 turns the field WARM, reversing the cool-neutral set of 2026-07-26. That decision was
+    // The field is WARM, reversing the cool-neutral set of 2026-07-26. That decision was
     // taken against an olive that read as warm espresso; the brief has since changed to "read as
     // part of the system, not as a custom-designed app", and the greys it is measured against are
     // warm (R ≥ G ≥ B on every step). Cool-neutral is what made the old window read as designed.
@@ -105,7 +105,7 @@ QtObject {
     readonly property color uiHoverStrong: Qt.rgba(bone.r, bone.g, bone.b, 0.09)
     readonly property color uiNavHover:    Qt.rgba(bone.r, bone.g, bone.b, 0.04)
     readonly property color uiSelected:    Qt.rgba(bone.r, bone.g, bone.b, 0.075)
-    // ── OPAQUE on purpose (D40) ──────────────────────────────────────────────
+    // ── OPAQUE on purpose ────────────────────────────────────────────────────
     // These two are ANIMATED against opaque colours — the recorder's border goes hairline →
     // hover, the toggle's track goes track → accent. A ColorAnimation interpolates the alpha
     // channel too, so a translucent endpoint makes the control briefly SEE-THROUGH on the way,
@@ -120,7 +120,7 @@ QtObject {
     readonly property color uiEdgeHover:   "#525150"
     readonly property color uiTrackOff:    "#3b3b39"
 
-    // The UI accent is now WHITE (Thomas, 2026-07-26 — the lime read as sporty): toggles, the
+    // The UI accent is now WHITE (2026-07-26 — the lime read as sporty): toggles, the
     // primary model, focus, text selection all use `accent`. The secondary colours are firmed
     // down from the neon sandbox set into muted, editorial tones — coral for the mark + on-air,
     // berry for faults (so red never means "the mic can hear you"); teal is reserved, unused.
@@ -128,7 +128,7 @@ QtObject {
     readonly property color flare:  "#cf6142"         // muted coral — mark, on-air
     readonly property color vapor:  "#40988c"         // muted teal (reserved)
     readonly property color pulse:  "#c2506f"         // muted berry — faults
-    // D40 splits these apart. `pulse` stays the FAULT colour, keeping the rule that red never
+    // `pulse` and `danger` are separate colours. `pulse` stays the FAULT colour, keeping the rule that red never
     // means "the mic can hear you"; `danger` becomes a real red for the two destructive
     // ACTIONS — the close button's hover and Remove — because a muted berry on a solid button
     // reads as disabled, which is the opposite of the signal those two need.
@@ -139,7 +139,7 @@ QtObject {
     readonly property real opacityDim: 0.55          // a decided setting whose consumer is unbuilt
     readonly property int radiusCard: 12
     readonly property int radiusControl: 8
-    // One height for every text button AND the three window controls (D40). A token rather than
+    // One height for every text button AND the three window controls. A token rather than
     // a consequence of padding, because "the same size" must not depend on two paddings agreeing
     // — which is exactly how they drifted apart when the button font changed.
     readonly property int controlHeight: 34
@@ -154,12 +154,12 @@ QtObject {
     //   small   14 — the floor: chips, machine values, the effort scale, captions
     // Bold + sentence case carry the heading; there is no uppercase-eyebrow tier. QML wants
     // ints here — a fractional pixelSize is rejected outright.
-    // D40 re-cuts this to FOUR, a step smaller throughout, because the window is now measured
+    // Four sizes, a step smaller throughout, because the window is now measured
     // against the OS rather than against itself: 17 page title · 15 section · 14 body · 12 the
-    // floor. A description takes the size of the label it belongs to (Thomas) — weight and
+    // floor. A description takes the size of the label it belongs to — weight and
     // colour do the separating, not scale, which is why there is no size between 14 and 12.
     // These tokens are the settings window's ALONE; the island's sizes are its own, above.
-    // Bumped a step on 2026-08-01 (Thomas): 14/12 measured correct against the HTML mockup on
+    // Bumped a step on 2026-08-01: 14/12 measured correct against the HTML mockup on
     // paper — Qt's pixelSize and CSS's font-size agree on Inter — but side by side on the real
     // display the window read visibly smaller than the page. The screen is the authority.
     readonly property int fontTitle:   18
@@ -170,7 +170,7 @@ QtObject {
     // frontend/fonts and registered at startup (falls back silently if the file is missing).
     readonly property string fontMono: "Martian Mono"
     // Instrument Serif is bundled and registered too, but DEPLOYED NOWHERE yet — reserved for a
-    // serif accent on Thomas's explicit say-so. Do not reference this token until then.
+    // serif accent, pending an explicit decision. Do not reference this token until then.
     readonly property string fontSerif: "Instrument Serif"
 
     // Model editor card — a denser scale than the window's 18/16/14 (a card packs many controls
@@ -235,7 +235,7 @@ QtObject {
     // Dropdown popup: show at most this many rows, then scroll (a fetched model list can be 100+).
     readonly property int dropdownRows: 8
     // Scrollbar thumb thickness — the one width every scrollbar shares (settings + the island peek),
-    // via the ThemedScrollBar component (Thomas, 2026-07-27).
+    // via the ThemedScrollBar component (2026-07-27).
     readonly property int scrollThickness: 5
 
     // ── vertical rhythm ─────────────────────────────────────────────────────

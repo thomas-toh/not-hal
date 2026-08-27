@@ -1,6 +1,6 @@
 # Gem — mascot sprite kit · handoff (v3)
 
-Gem is the character that represents not-hal while she works: a pixel sprite
+Gem is the character that represents the app while she works: a pixel sprite
 derived from the not-hal mark itself (the 3/4 disc with the hard square corner).
 One **state** per assistant state; each state holds several **clips** — a base
 loop, plus enters, exits, one-shot actions and holds.
@@ -15,14 +15,14 @@ in sync — see **Regenerating** at the end.
 > wide**, and the idle script is **two-tier** (filler vs gags), which needs the
 > updated loader in this folder. v2's files are archived in `v2-archive/`.
 
-> ### not-hal runs the 26 × 26 build (Option B)
+> ### The app runs the 26 × 26 build (Option B)
 >
 > The files here are Design's `26/` export, not the 32 one this README describes.
 > Same 497 frames, same clip and state names, same script, same palette — the
 > cell is cropped tighter, so Gem is 54 % of the icon width instead of 44 % and
 > renders 1.23× larger at a given box. Read the size figures below as:
 >
-> | this README says | not-hal ships |
+> | this README says | the app ships |
 > | --- | --- |
 > | cell 32 × 32 | **26 × 26** |
 > | atlas 2240 × 768 | **1820 × 624** |
@@ -39,7 +39,7 @@ in sync — see **Regenerating** at the end.
 > two-tier script from them. §7's `recrop_26.py` is superseded by Design's own
 > `26/` export and has been removed.
 >
-> **not-hal mutes two idle fidgets** (Thomas): `look-around` (a filler) and `jump`
+> **The app mutes two idle fidgets**: `look-around` (a filler) and `jump`
 > (a gag) never fire. The frames and their script weights still ship here — the
 > skip lives in `al.py`'s `MUTED`, because the next export overwrites this
 > folder. Read §3's tables as five gags and one filler.

@@ -3,11 +3,10 @@ places a setting can live: the config file (shared/settings.py) and the OS crede
 
 Deliberately thin, like model.py: no rule about what a pane contains lives here. Panes, rows,
 labels, defaults and provider capabilities all come from `shared/schemas/settings.json`, so this
-file exposes the schema rather than restating it (hard rule 3).
+file exposes the schema rather than restating it.
 
 Secrets never touch the settings file. `keyState`/`setKey` talk to `keyring` under service
-`not-hal`, keyed by PROVIDER (spec/50 rule 10) — the same entries claude.py and the Groq cleanup
-already read.
+`not-hal`, keyed by PROVIDER — the same entries claude.py and the Groq cleanup already read.
 """
 from __future__ import annotations
 
@@ -25,8 +24,8 @@ from shared.config import KEY_SERVICE
 
 # The ONLY fields the UI may persist into a provider's `models[<pid>]` entry. An allowlist, not a
 # comment: `addProvider`/`setModel` merge whatever the form hands them, so without this a field
-# named `key`/`api_key` would land in settings.json — the one file spec/50 rule 10 says a secret
-# must never enter. These are exactly what the router reads back (backend/router.py).
+# named `key`/`api_key` would land in settings.json — the one file a secret must never enter.
+# These are exactly what the router reads back (backend/router.py).
 _PERSIST_FIELDS = frozenset(
     {"on", "model", "effort", "thinking", "temperature", "endpoint", "keep_alive"})
 
@@ -53,7 +52,7 @@ class SettingsModel(QObject):
         self._gen: dict[str, int] = {}
         # The TRIAL: one slot, not a per-provider cache. "Does this key I just typed work?" is a
         # question about an unsaved credential, and answering it into the shared provider cache is
-        # what let a stored key's result be read as a verdict on a typed one (Thomas, 2026-08-01).
+        # what let a stored key's result be read as a verdict on a typed one (2026-08-01).
         # The roster keeps using `_live`/`_status`; the Add/Edit sheet reads only this.
         self._trial: dict = {"pid": "", "status": "", "models": []}
         self._trial_gen = 0
@@ -95,9 +94,8 @@ class SettingsModel(QObject):
     def validateBinding(self, combo: str) -> bool:
         """Is `combo` a shortcut the daemon can actually register? The keybind recorder asks
         before committing, so the window never stores something hotkeys.py will reject at
-        startup. Reuses the real parser (hard rule 3) rather than re-listing the key vocabulary
-        — a bare key, an unknown key, or two non-modifier keys all fail here exactly as they
-        would there."""
+        startup. Reuses the real parser rather than re-listing the key vocabulary — a bare key,
+        an unknown key, or two non-modifier keys all fail here exactly as they would there."""
         try:
             from backend.hotkeys import parse_binding
             parse_binding(combo)
@@ -144,10 +142,10 @@ class SettingsModel(QObject):
 
     @Slot(str, result="QVariant")
     def toolsFor(self, connector: str) -> list:
-        """The tools a connector enables, as `[{label, ready}]` in registry order (D38).
+        """The tools a connector enables, as `[{label, ready}]` in registry order.
 
-        Read from `shared/schemas/tools.json`, never restated here (hard rule 3), so a tool joins a
-        card by declaring the connector and nothing in this window changes. `ready` is false for a
+        Read from `shared/schemas/tools.json`, never restated here, so a tool joins a card by
+        declaring the connector and nothing in this window changes. `ready` is false for a
         tool that could not run even with the connector on — no backend on this platform, or above
         `MAX_TIER` — because a card that promises what the tier still forbids is the same lie the
         gate exists to prevent. Consent has to be to something specific, which is why the card
@@ -177,7 +175,7 @@ class SettingsModel(QObject):
         """Provider id -> the name to SHOW (`openai` -> `OpenAI`), from the catalogue's `name`.
 
         Settings store ids, which are lowercase wire names; a picker that prints them raw reads
-        like a config file. Constant because the catalogue is (hard rule 3: it is the schema)."""
+        like a config file. Constant because the catalogue is: it is the schema."""
         return {pid: p.get("name", pid) for pid, p in self.catalog.items()}
 
     @Property("QVariant", constant=True)
@@ -255,7 +253,7 @@ class SettingsModel(QObject):
         # The router already falls back cleanly, but a stale pointer left in the file kept the
         # Dictate row displaying a provider that is no longer added — UI and daemon disagreeing
         # about a fact both can see. Derived from the schema, so a new provider-typed role is
-        # covered without touching this (hard rule 3).
+        # covered without touching this.
         for key, s in self.meta.items():
             if s.get("type") == "provider" and settings.get(key) == pid:
                 settings.set(key, "")
@@ -356,7 +354,7 @@ class SettingsModel(QObject):
 
     @Property(str, notify=changed)
     def localTwoModelNote(self) -> str:
-        """The VRAM note, or "" when it does not apply (Thomas, 2026-08-02).
+        """The VRAM note, or "" when it does not apply (2026-08-02).
 
         Fires when two roles resolve to DIFFERENT models on the SAME local provider. That is the
         configuration where Ollama has to swap models in and out unless both fit in VRAM, and the
@@ -367,7 +365,7 @@ class SettingsModel(QObject):
         usage and each model's loaded footprint, and would be wrong often enough to be an
         annoyance — so this states the fact and leaves the judgement to someone who can see their
         own GPU. Same reason a cloud provider never triggers it: two remote models cost nothing to
-        hold. The text comes from the schema, never restated here (hard rule 3).
+        hold. The text comes from the schema, never restated here.
         """
         by_provider: dict[str, set] = {}
         for role in ("primary", "cleanup_dictation", "cleanup_prompts"):
@@ -552,7 +550,7 @@ class SettingsModel(QObject):
     @Slot(str, str, result=bool)
     def setKey(self, pid: str, value: str) -> bool:
         """Store or clear a provider's key. The value is never logged and never written
-        anywhere but the OS credential store (spec/50 rule 10)."""
+        anywhere but the OS credential store."""
         cat = self.catalog.get(pid, {})
         if cat.get("auth") != "key":
             return False
@@ -733,7 +731,7 @@ if __name__ == "__main__":
         assert m.modelState("ollama") == "ok", "a cached list is not re-fetched by refreshModels"
         m.removeProvider("ollama")
 
-        # --- an EDIT merges, it does not rebuild (M2) ------------------------------------
+        # --- an EDIT merges, it does not rebuild -----------------------------------------
         # commitAdd funnels an edit through addProvider(pid, config). A provider switched OFF must
         # not come back on — nor steal the default — just because Done was pressed on its sheet,
         # and a field the form does not carry must survive.

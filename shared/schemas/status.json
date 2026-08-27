@@ -3,8 +3,8 @@
   "$id": "nothal/overlay/status",
   "title": "Overlay status feed messages",
   "version": "0.8.0",
-  "description": "JSON status events the orchestrator broadcasts over a localhost-only socket for the Teleprompter overlay to render (spec/00 D19, Contract P). Transport is one JSON object per line (NDJSON); host/port/env-var in 'transport' below. Protocol: receivers ignore unknown message types (log once); every message carries 'type'. The 'state' values are the overlay's own; its listening indicator inherits spec/50's truthful-indicator rule (shows 'listening' only while audio is actually being captured). Nearly all traffic is orchestrator->overlay; 'upstream' below lists the sole exception (D24).",
-  "$comment": "'transport', 'clearsTurn' and 'upstream' are Contract P RULES the code loads at run time (hard rule 3), not JSON Schema keywords — draft 2020-12 ignores unknown top-level keys, so they travel with the message shapes they govern instead of being restated as literals in frontend/decode.py and backend/broadcaster.py. 'transport' is the one home both packages read (and the Rust back-end D21 plans will too — a Python constant is unreachable from Rust); the port used to live in three places and the env override in only one, so setting it moved the daemon and left the overlay reconnecting to the old port forever.",
+  "description": "JSON status events the orchestrator broadcasts over a localhost-only socket for the Teleprompter overlay to render (Contract P). Transport is one JSON object per line (NDJSON); host/port/env-var in 'transport' below. Protocol: receivers ignore unknown message types (log once); every message carries 'type'. The 'state' values are the overlay's own; its listening indicator is truthful by construction (shows 'listening' only while audio is actually being captured). Nearly all traffic is orchestrator->overlay; 'upstream' below lists the sole exception.",
+  "$comment": "'transport', 'clearsTurn' and 'upstream' are Contract P RULES the code loads at run time, not JSON Schema keywords — draft 2020-12 ignores unknown top-level keys, so they travel with the message shapes they govern instead of being restated as literals in frontend/decode.py and backend/broadcaster.py. 'transport' is the one home both packages read (and the planned Rust back-end will too — a Python constant is unreachable from Rust); the port used to live in three places and the env override in only one, so setting it moved the daemon and left the overlay reconnecting to the old port forever.",
   "transport": { "host": "127.0.0.1", "port": 8990, "portEnv": "NOTHAL_STATUS_PORT" },
   "clearsTurn": ["listening", "thinking"],
   "upstream": ["dismiss"],
@@ -21,7 +21,7 @@
   "$defs": {
     "state": {
       "type": "object",
-      "description": "orchestrator->overlay: coarse session state — drives the island's mode (listening = bars, thinking = processing, speaking = reply shown, error = fault, idle = the orchestrator is free again). 'booting' (v0.7.0) is startup: the daemon publishes it the moment it comes up and clears it (to 'idle') when warm-up finishes — speech-to-text loaded, any local model server started. It shows the island as a small circular loader (no word), because the doors are DROPPED until warm-up completes: every path needs speech-to-text and the assistant path needs its model reachable, so a keypress before then would hit an unloaded model and read as an error. 'idle' means the DAEMON has finished, not that the island must vanish: since D24 the overlay owns when it stops showing the last answer, because only it knows how much text is left to reveal. A capture window opening publishes 'listening', which clears the previous turn by itself (see 'clearsTurn') — there is no separate clearing message. Dictation (spec/60, Track D) adds three states of its own — 'transcribing' (STT running), 'transforming' (cleanup running), 'pasted' (the cleaned text has reached the caret). It pastes into another app and shows no reply, so for dictation the island is a pure status indicator: 'transcribing'/'transforming' show a steady status word, and 'pasted' is a brief confirmation the overlay dwells on then hides. Recording reuses 'listening' (+ its bars); these cover only the phases after the capture closes.",
+      "description": "orchestrator->overlay: coarse session state — drives the island's mode (listening = bars, thinking = processing, speaking = reply shown, error = fault, idle = the orchestrator is free again). 'booting' (v0.7.0) is startup: the daemon publishes it the moment it comes up and clears it (to 'idle') when warm-up finishes — speech-to-text loaded, any local model server started. It shows the island as a small circular loader (no word), because the doors are DROPPED until warm-up completes: every path needs speech-to-text and the assistant path needs its model reachable, so a keypress before then would hit an unloaded model and read as an error. 'idle' means the DAEMON has finished, not that the island must vanish: the overlay owns when it stops showing the last answer, because only it knows how much text is left to reveal. A capture window opening publishes 'listening', which clears the previous turn by itself (see 'clearsTurn') — there is no separate clearing message. Dictation adds three states of its own — 'transcribing' (STT running), 'transforming' (cleanup running), 'pasted' (the cleaned text has reached the caret). It pastes into another app and shows no reply, so for dictation the island is a pure status indicator: 'transcribing'/'transforming' show a steady status word, and 'pasted' is a brief confirmation the overlay dwells on then hides. Recording reuses 'listening' (+ its bars); these cover only the phases after the capture closes.",
       "properties": {
         "type": { "const": "state" },
         "state": { "enum": ["booting", "idle", "listening", "thinking", "speaking", "error", "transcribing", "transforming", "pasted"] }
@@ -31,7 +31,7 @@
     },
     "transcript": {
       "type": "object",
-      "description": "orchestrator->overlay: the user's transcribed prompt AFTER the deterministic word-replacement/cleanup (spec/40, D15). 'final':false is reserved for streaming STT (deferred); M0 always sends final:true. The overlay accumulates finals for the expanded view (D22, in-memory; the ⌄ 'expandable' handle D14 named was cut).",
+      "description": "orchestrator->overlay: the user's transcribed prompt AFTER the deterministic word-replacement/cleanup. 'final':false is reserved for streaming STT (deferred); today always final:true. The overlay accumulates finals for the expanded view (in-memory).",
       "properties": {
         "type": { "const": "transcript" },
         "text": { "type": "string" },
@@ -42,7 +42,7 @@
     },
     "response": {
       "type": "object",
-      "description": "orchestrator->overlay: one chunk of the model's reply as it streams (the teleprompter, D14). The overlay appends 'delta' to the current reply; 'done':true marks the reply complete. Clearing is governed by the top-level 'clearsTurn' list, which the reducer loads rather than restates: a 'state' in that list clears the reply and any fault. 'speaking' and 'error' are deliberately absent — the reply streams in during THINKING and the island flips to SPEAKING while it is read, so clearing there would blank the text exactly as the user starts reading it. 'idle' is absent too (D24): it now means the daemon has finished, and the answer must survive it long enough to be read. On the 'done':true message the orchestrator also stamps 'model' (the model id that produced the reply) and 'tokens' (the turn's total input+output tokens, summed across tool-loop rounds); the peek footer shows them (D34). Both are absent on streaming deltas and optional. 'dwell' rides on the same message and says which KIND of turn this was, so the overlay knows how long to leave it up (D43): 'quick' for a turn that ACTED and has nothing to read, 'slow' (the default when absent) for one that answered. It names the kind and never a duration, because how many seconds each kind gets is the user's setting, not the daemon's business.",
+      "description": "orchestrator->overlay: one chunk of the model's reply as it streams (the teleprompter). The overlay appends 'delta' to the current reply; 'done':true marks the reply complete. Clearing is governed by the top-level 'clearsTurn' list, which the reducer loads rather than restates: a 'state' in that list clears the reply and any fault. 'speaking' and 'error' are deliberately absent — the reply streams in during THINKING and the island flips to SPEAKING while it is read, so clearing there would blank the text exactly as the user starts reading it. 'idle' is absent too: it means the daemon has finished, and the answer must survive it long enough to be read. On the 'done':true message the orchestrator also stamps 'model' (the model id that produced the reply) and 'tokens' (the turn's total input+output tokens, summed across tool-loop rounds); the peek footer shows them. Both are absent on streaming deltas and optional. 'dwell' rides on the same message and says which KIND of turn this was, so the overlay knows how long to leave it up: 'quick' for a turn that ACTED and has nothing to read, 'slow' (the default when absent) for one that answered. It names the kind and never a duration, because how many seconds each kind gets is the user's setting, not the daemon's business.",
       "properties": {
         "type": { "const": "response" },
         "delta": { "type": "string", "default": "" },
@@ -56,7 +56,7 @@
     },
     "mic": {
       "type": "object",
-      "description": "orchestrator->overlay: mic input level in [0,1], emitted while a capture window is open (LISTENING) — drives the listening bars and is the spec/50 truthful indicator for that window: whenever a capture window is open a 'mic' message is present, and the overlay must not infer 'listening' from anything else. Always-on-mic monitoring — the wake-word watch at IDLE and barge-in detection during SPEAKING — is a separate, user-gated category that deliberately emits no 'mic' (both are governed together by the 'listen for me' setting, spec/70); so the island shows no mic cue while not-hal speaks. High-frequency and droppable.",
+      "description": "orchestrator->overlay: mic input level in [0,1], emitted while a capture window is open (LISTENING) — drives the listening bars and is the truthful indicator for that window: whenever a capture window is open a 'mic' message is present, and the overlay must not infer 'listening' from anything else. Always-on-mic monitoring — the wake-word watch at IDLE and barge-in detection during SPEAKING — is a separate, user-gated category that deliberately emits no 'mic' (both are governed together by the 'listen for me' setting); so the island shows no mic cue while the app speaks. High-frequency and droppable.",
       "properties": {
         "type": { "const": "mic" },
         "level": { "type": "number", "minimum": 0, "maximum": 1 }
@@ -66,7 +66,7 @@
     },
     "tool": {
       "type": "object",
-      "description": "orchestrator->overlay: a Contract-T tool is running, or has just finished (D38; the tool-activity indicator spec/40 reserved). Sent once with 'done':false as the call starts and once with 'done':true as it returns, around EVERY outcome — run, refused or errored — so the indicator can never outlive the work. This is the second half of consent: a card states what a connector may reach before the fact, and this names what was actually reached during. 'label' is the tool said in a sentence a person would use, taken from the registry's own `label` (schemas/tools.json) so the overlay needs no copy of it; 'name' is the machine id, for styling and logs. A tool round is invisible without this — a turn that searched your mail looks identical to one that did not.",
+      "description": "orchestrator->overlay: a Contract-T tool is running, or has just finished. Sent once with 'done':false as the call starts and once with 'done':true as it returns, around EVERY outcome — run, refused or errored — so the indicator can never outlive the work. This is the second half of consent: a card states what a connector may reach before the fact, and this names what was actually reached during. 'label' is the tool said in a sentence a person would use, taken from the registry's own `label` (schemas/tools.json) so the overlay needs no copy of it; 'name' is the machine id, for styling and logs. A tool round is invisible without this — a turn that searched your mail looks identical to one that did not.",
       "properties": {
         "type": { "const": "tool" },
         "name": { "type": "string" },
@@ -78,7 +78,7 @@
     },
     "latency": {
       "type": "object",
-      "description": "orchestrator->overlay: a per-turn latency reading as the orchestrator measures it against the spec/40 targets. 'feedback' = end-of-speech -> first perceptible feedback; 'first_word' = end-of-speech -> first spoken word. Instrument data for the M0 acceptance run, not user-facing chrome by default.",
+      "description": "orchestrator->overlay: a per-turn latency reading as the orchestrator measures it against the latency targets. 'feedback' = end-of-speech -> first perceptible feedback; 'first_word' = end-of-speech -> first spoken word. Instrument data for the acceptance run; not user-facing chrome by default.",
       "properties": {
         "type": { "const": "latency" },
         "metric": { "enum": ["feedback", "first_word"] },
@@ -89,7 +89,7 @@
     },
     "error": {
       "type": "object",
-      "description": "orchestrator->overlay: why the current turn failed. Pairs with a state:'error' message (which flips the island to its fault mode); this carries the human-facing reason so the surface can explain the fault, not merely flag it. 'kind' is the Contract-B error taxonomy (spec/20: auth | rate_limit | context | unavailable | malformed_tool_call | unknown) carried as a free string for styling/affordances — receivers tolerate unknown kinds. 'message' is the one-line explanation (the same sentence spoken per spec/40 narration).",
+      "description": "orchestrator->overlay: why the current turn failed. Pairs with a state:'error' message (which flips the island to its fault mode); this carries the human-facing reason so the surface can explain the fault, not merely flag it. 'kind' is the Contract-B error taxonomy (auth | rate_limit | context | unavailable | malformed_tool_call | unknown) carried as a free string for styling/affordances — receivers tolerate unknown kinds. 'message' is the one-line explanation (the same sentence that is spoken aloud).",
       "properties": {
         "type": { "const": "error" },
         "kind": { "type": "string", "default": "unknown" },
@@ -100,7 +100,7 @@
     },
     "dismiss": {
       "type": "object",
-      "description": "overlay->orchestrator: the user dismissed the island (Esc while it shows, or a close affordance). THE ONLY message that travels upstream (see 'upstream'), and it is a CANCEL, never a command (spec/50 rule 12): it can stop work already in flight — drop the capture, cut TTS, cancel the in-flight model call — and can never start a turn, run a tool, or change a setting. The overlay owns bare Esc because it alone knows when it is on screen (D24); the orchestrator treats this exactly as it treated its own dismiss key, so one handler still unwinds every state.",
+      "description": "overlay->orchestrator: the user dismissed the island (Esc while it shows, or a close affordance). THE ONLY message that travels upstream (see 'upstream'), and it is a CANCEL, never a command: it can stop work already in flight — drop the capture, cut TTS, cancel the in-flight model call — and can never start a turn, run a tool, or change a setting. The overlay owns bare Esc because it alone knows when it is on screen; the orchestrator treats this exactly as it treated its own dismiss key, so one handler still unwinds every state.",
       "properties": {
         "type": { "const": "dismiss" }
       },

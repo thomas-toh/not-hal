@@ -1,12 +1,12 @@
-"""Track G step 3 (docs/04 §8): wake -> listen (VAD) -> transcribe -> console.
+"""Wake -> listen (VAD) -> transcribe -> console.
 
-Extends step 2. On wake it captures speech, uses Silero VAD to find end-of-speech
-(1 s of silence, spec/40; --silence-ms to tune), then transcribes the utterance with faster-whisper
+Extends the wake listener. On wake it captures speech, uses Silero VAD to find end-of-speech
+(1 s of silence; --silence-ms to tune), then transcribes the utterance with faster-whisper
 (small.en) and prints the text. A little pre-roll from the ring buffer keeps the start
-of the sentence. All audio stays in RAM and is dropped after transcription (spec/50
-rule 3) -- nothing is written to disk.
+of the sentence. All audio stays in RAM and is dropped after transcription -- nothing
+is written to disk.
 
-Engine choice A (spec/40): faster-whisper, GPU (CUDA) if present else CPU -- same code
+Engine: faster-whisper, GPU (CUDA) if present else CPU -- same code
 on Windows and macOS. transcribe() is the swap-point: a Mac-GPU engine (whisper.cpp /
 MLX) can replace its body later without touching the pipeline.
 
@@ -28,18 +28,18 @@ from shared.log import setup_logging
 
 log = logging.getLogger("nothal.listen")
 
-# --- listening-window params (all tunable; see spec/40) ---
+# --- listening-window params (all tunable) ---
 VAD_CHUNK = 512                                   # Silero VAD needs 512-sample windows @ 16 kHz
 VAD_CHUNK_MS = VAD_CHUNK * 1000 // SAMPLE_RATE    # 32 ms
 VAD_THRESHOLD = 0.5                               # speech if Silero prob >= this
-SILENCE_MS = 1000                                 # spec/40: end-of-speech silence (--silence-ms
+SILENCE_MS = 1000                                 # end-of-speech silence (--silence-ms
                                                   # to tune live; semantic endpointing is the
-                                                  # proper fix for long composed prompts, M1)
+                                                  # proper fix for long composed prompts, later)
 MAX_UTTERANCE_S = 30                              # assistant safety cap ONLY; VAD ends normal turns
-DICTATION_MAX_UTTERANCE_S = 300                   # dictation's endpoint is the KEY (D20), so this is
+DICTATION_MAX_UTTERANCE_S = 300                   # dictation's endpoint is the KEY, so this is
                                                   # only a runaway backstop — generous, or a long
                                                   # dictation (an email, a paragraph) truncates mid-word
-NOSPEECH_MS = 5000                                # spec/40: give up if nothing said after wake
+NOSPEECH_MS = 5000                                # give up if nothing said after wake
 PREROLL_MS = 200                                  # pre-roll from ring buffer (tune: onset vs
                                                   # bleeding the wake word into the transcript)
 
@@ -48,11 +48,11 @@ PREROLL_MS = 200                                  # pre-roll from ring buffer (t
 # selfcheck prints the live numbers instead.
 SILENCE_CHUNKS = (SILENCE_MS + VAD_CHUNK_MS - 1) // VAD_CHUNK_MS   # ceil: end-of-speech silence
 MAX_CHUNKS = MAX_UTTERANCE_S * 1000 // VAD_CHUNK_MS                # assistant runaway cap
-DICTATION_MAX_CHUNKS = DICTATION_MAX_UTTERANCE_S * 1000 // VAD_CHUNK_MS   # dictation backstop (spec/60)
+DICTATION_MAX_CHUNKS = DICTATION_MAX_UTTERANCE_S * 1000 // VAD_CHUNK_MS   # dictation backstop
 NOSPEECH_CHUNKS = NOSPEECH_MS // VAD_CHUNK_MS                      # give up if speech never starts
 PREROLL_BLOCKS = PREROLL_MS // BLOCK_MS                            # pre-roll from the ring
 
-WHISPER_MODEL = "small.en"                        # spec/40 decision 2
+WHISPER_MODEL = "small.en"                        # chosen over base/medium: accuracy vs speed on this hardware
 
 
 class EndOfSpeech:
@@ -90,7 +90,7 @@ class EndOfSpeech:
 def _silero_model_path() -> str:
     """Path to the Silero VAD ONNX model that openWakeWord already ships. Reusing it
     lets us run VAD on onnxruntime with **no torch** — which also sidesteps torch failing
-    to install on this box (Windows long-path limit). ponytail: reuses a bundled asset;
+    to install on this machine (Windows long-path limit). ponytail: reuses a bundled asset;
     vendor the ~2 MB model if that coupling ever breaks."""
     import glob
     import os
@@ -129,7 +129,7 @@ class SileroVAD:
 
 
 _whisper = None
-_whisper_lock = threading.Lock()   # D39: run() warms this on a background thread while the
+_whisper_lock = threading.Lock()   # run() warms this on a background thread while the
                                    # hotkeys are already live, so two threads can race the
                                    # lazy init below and build two CUDA models.
 
@@ -180,7 +180,7 @@ def _load_cuda_dlls() -> None:
 
 
 def _load_whisper(device: str, compute_type: str):
-    """Load the model, preferring the copy already on disk (D39). faster-whisper otherwise
+    """Load the model, preferring the copy already on disk. faster-whisper otherwise
     asks huggingface.co for the current revision on EVERY start — an internet dependency at
     launch for a model we already have, and dead weight in the cold-start measurement. We
     fall back to a networked load rather than hard-failing, because `local_files_only` is
@@ -197,7 +197,7 @@ def _load_whisper(device: str, compute_type: str):
 
 
 def _ensure_whisper():
-    """The model, built exactly once. The lock is load-bearing since D39: run() warms this
+    """The model, built exactly once. The lock is load-bearing: run() warms this
     on a background thread while the hotkeys are already live, so a real capture can reach
     here mid-warm-up. Unlocked, both callers would see None and each build a CUDA model —
     two copies of the weights on the GPU. The late arrival blocks on the load instead, which
@@ -225,17 +225,17 @@ def _fallback_to_cpu():
 
 def _run(model, audio_f32) -> str:
     # beam_size=5 is faster-whisper's own default. It was 1 (greedy) for latency until
-    # 2026-08-03, when accuracy needed it — the condition the old ponytail note named.
-    # Greedy commits to the top token at every step and cannot reconsider, which is exactly
-    # the shape of the errors seen: "Edge" -> "itch", a short low-context word whose
-    # acoustic neighbour won one step. Costs ~2-3x on the DECODE half of a ~35 ms transcribe,
-    # invisible against cleanup's 240-450 ms. Raise it further only with a measurement.
+    # 2026-08-03, when accuracy needed it. Greedy commits to the top token at every step and
+    # cannot reconsider, which is exactly the shape of the errors seen: "Edge" -> "itch", a
+    # short low-context word whose acoustic neighbour won one step. Costs ~2-3x on the DECODE
+    # half of a ~35 ms transcribe, invisible against cleanup's 240-450 ms. Raise it further
+    # only with a measurement.
     segments, _ = model.transcribe(audio_f32, language="en", beam_size=5)
     return "".join(s.text for s in segments).strip()
 
 
 def transcribe(audio_f32) -> str:
-    """STT seam (spec/40 engine choice A). Uses the GPU (CUDA) when it's actually usable,
+    """STT seam. Uses the GPU (CUDA) when it's actually usable,
     else CPU — one code path on Windows and macOS. A Mac-GPU engine (whisper.cpp / MLX)
     could replace this body later, same signature.
 
@@ -309,7 +309,7 @@ def listen(silence_ms: int = SILENCE_MS) -> None:
 
 
 def _selfcheck() -> None:
-    """No mic/models: prove the end-of-speech state machine (spec/40 timings)."""
+    """No mic/models: prove the end-of-speech state machine."""
     # 1) speech then silence -> ends after exactly SILENCE_CHUNKS of silence
     eos = EndOfSpeech()
     for _ in range(20):
@@ -363,7 +363,7 @@ def _selfcheck() -> None:
 
 def main() -> None:
     setup_logging()
-    ap = argparse.ArgumentParser(description="not-hal wake+listen+transcribe (Track G step 3)")
+    ap = argparse.ArgumentParser(description="Wake word, listening window and transcription, run on their own")
     ap.add_argument("--selfcheck", action="store_true",
                     help="verify end-of-speech logic without a mic or models, then exit")
     ap.add_argument("--silence-ms", type=int, default=SILENCE_MS,

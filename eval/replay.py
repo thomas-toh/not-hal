@@ -1,7 +1,7 @@
-"""Track G step 7 (docs/04 §7-8): the replay harness — recorded WAVs through the REAL
-pipeline (openWakeWord, Silero VAD, faster-whisper) driving the REAL orchestrator state
-machine, with fakes only at the edges: mic (the WAV), output pump (audio-time
-simulation), model (scripted Contract-B events) and TTS (silence of realistic length).
+"""The replay harness plays recorded WAVs through the REAL pipeline (openWakeWord, Silero
+VAD, faster-whisper) driving the REAL orchestrator state machine, with fakes only at
+the edges: mic (the WAV), output pump (audio-time simulation), model (scripted
+Contract-B events) and TTS (silence of realistic length).
 
 Identical audio every run: if a wake/VAD/STT/tuning change alters behaviour, this
 catches it in one command — on the PC and, with the copied wav/ folder, on the Mac.
@@ -10,9 +10,10 @@ catches it in one command — on the PC and, with the copied wav/ folder, on the
     python -m eval.replay --case key_short         # one case
     python -m eval.replay --record key_short       # record that case's WAV (mic)
 
-The WAVs are Thomas's voice and deliberately untracked (eval/replay/wav/ is
+The WAVs are a recorded voice and deliberately untracked (eval/replay/wav/ is
 gitignored); cases.json (text only) is committed. Recording fixtures is consented,
-scripted capture — spec/50 rule 3 governs ambient mic audio, not test data.
+scripted capture; the privacy rule on ambient mic audio covers live listening, and
+test fixtures fall outside it.
 """
 from __future__ import annotations
 
@@ -267,7 +268,7 @@ def record(name: str, seconds: int) -> None:
 def main() -> None:
     from shared.log import setup_logging
     setup_logging()
-    ap = argparse.ArgumentParser(description="not-hal replay harness (Track G step 7)")
+    ap = argparse.ArgumentParser(description="Replay recorded audio through the pipeline")
     ap.add_argument("--case", help="run a single case by name")
     ap.add_argument("--record", metavar="NAME", help="record NAME's WAV from the mic")
     ap.add_argument("--seconds", type=int, default=0, help="recording length override")

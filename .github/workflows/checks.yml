@@ -1,6 +1,6 @@
-# Selfcheck CI: every module's offline logic check, on every push (docs/04 §7, scoped
-# down — the replay harness can't run here because the voice WAVs are deliberately
-# untracked; see STATE, Track G). No models, no API key, no audio device needed.
+# Selfcheck CI: every module's offline logic check, on every push. The replay harness can't
+# run here because the voice WAVs are deliberately untracked. No models, no API key, no audio
+# device needed.
 name: checks
 
 on:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   selfchecks:
-    runs-on: windows-latest # the reference platform (spec/00 D10)
+    runs-on: windows-latest # the reference platform
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,7 +19,7 @@ jobs:
       - run: pip install -e .
       - run: python -m shared.config
       - run: python -m shared.log
-      # The config file + the settings schema it derives its defaults from (D28/D29). Points at
+      # The config file + the settings schema it derives its defaults from. Points at
       # a temp file, so it never touches a real profile.
       - run: python -m shared.settings
       - run: python -m backend.audio.wake --selfcheck
@@ -29,31 +29,31 @@ jobs:
       # not -m: the package __init__ already imports base, so -m re-executes it with a warning.
       - run: python -c "from backend.llm import base; base._selfcheck()"
       - run: python -m backend.llm.claude --selfcheck
-      # The provider catalogue (D30): base-URL composition and the credential/env fallback, both
+      # The provider catalogue: base-URL composition and the credential/env fallback, both
       # read from shared/schemas/settings.json. Touches the network only to prove a dead endpoint
       # returns [] instead of raising.
       - run: python -m backend.llm.providers
-      # B2 (D30): the one OpenAI-compatible adapter behind ten providers. Offline — request
+      # B2: the one OpenAI-compatible adapter behind ten providers. Offline — request
       # shaping, tool translation, error mapping, client lifetime. No key, no network.
       - run: python -m backend.llm.compat --selfcheck
-      # The router (spec/20 §Routing, D33): resolve a role -> the configured provider/model from
+      # The router: resolve a role -> the configured provider/model from
       # settings, or None to let the caller default. No network — this is what makes the model
       # picker actually drive the daemon.
       - run: python -m backend.router
       - run: python -m backend.orchestrator --selfcheck
       - run: python -m backend.broadcaster --selfcheck
-      # D39 lifetime tie: a CLEAN exit of either process stops the other (tray Quit, Ctrl-C);
-      # a CRASH of either spares the survivor (D13/D19 isolation). Policy only — no subprocesses.
+      # The lifetime tie: a CLEAN exit of either process stops the other (tray Quit, Ctrl-C);
+      # a CRASH of either spares the survivor. Policy only — no subprocesses.
       - run: python run.py --selfcheck
-      # Parsing + the tap/hold machine only; RegisterHotKey itself is proven live on the box.
+      # Parsing + the tap/hold machine only; RegisterHotKey itself is proven live on a real machine.
       - run: python -m backend.hotkeys --selfcheck
-      # Dictation delivery (spec/60): the UTF-16 encoder + a clipboard round-trip when the session
+      # Dictation delivery: the UTF-16 encoder + a clipboard round-trip when the session
       # has one (skipped, not failed, in a headless runner); the Ctrl+V chord is proven live.
       - run: python -m backend.paste --selfcheck
-      # D15 word-replacement (spec/60): the whole-word, case-insensitive, literal find-and-replace
+      # Word-replacement: the whole-word, case-insensitive, literal find-and-replace
       # run before dictation cleanup, plus that the shipped table loads. No network.
       - run: python -m backend.replace
-      # Contract T (spec/30): the tool executor — the filter (only implemented, in-tier tools
+      # Contract T, the tool executor. Checks the filter (only implemented, in-tier tools
       # reach the model), dispatch, the refusal backstop, and that every call is audited to
       # logs/audit.jsonl. No network; degrades gracefully with no clipboard on a headless runner.
       # find_document and search_email included: the shared term sanitiser and the DASL builder
@@ -65,23 +65,23 @@ jobs:
       - run: python -m backend.tools --selfcheck
       # The Teleprompter's Qt-free half: NDJSON framing + the reducer (imports no Qt).
       - run: python -m frontend.decode --selfcheck
-      # The renderer itself. PySide6 is a CORE dependency (D23), so `pip install -e .` above
+      # The renderer itself. PySide6 is a CORE dependency, so `pip install -e .` above
       # already installed it; overlay_check runs headless on Qt's offscreen platform (it sets
       # QT_QPA_PLATFORM itself), so no display is needed. This is the check guarding the module
-      # where every renderer bug this cycle lived (X-01). Software RHI: no GPU on the runner.
+      # where every renderer bug this cycle lived. Software RHI: no GPU on the runner.
       - run: python -m frontend.overlay_check
         env:
           QSG_RHI_BACKEND: software
       # The settings window's model — add/remove/enable/primary bookkeeping, no QML needed.
       - run: python -m frontend.settings_model
-      # The Al mascot renderer (Track P): the v2 kit loads, both palettes come from the JSON,
+      # The Al mascot renderer: the v2 kit loads, both palettes come from the JSON,
       # the kit's script drives the player (enters resolve, holds freeze, idle fidgets), the app
       # icon builds and image://al tolerates a bad id. Offscreen (the module sets it itself).
       - run: python -m frontend.al
       # The tray's mic ring: the level→picture mapping and the repaint gate that keeps a steady
       # voice from calling setIcon once per mic frame.
       - run: python -m frontend.tray
-      # ...and the window itself (D29), driven through every state it has. QML binding errors
+      # ...and the window itself, driven through every state it has. QML binding errors
       # are only warnings at runtime, so this fails on any of them. Headless, same as above.
       - run: python -m frontend.settings_check
         env:

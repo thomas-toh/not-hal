@@ -14,7 +14,7 @@ dist/
 # Local Claude Code settings (per-machine, not shared)
 .claude/settings.local.json
 
-# Replay fixtures are Thomas's voice — kept out of the (private) remote by choice;
+# Replay fixtures are the dev's voice — kept out of the (private) remote by choice;
 # copied to the Mac clone by hand. cases.json (text) IS committed.
 eval/replay/wav/
 
@@ -28,9 +28,8 @@ _to_delete/
 # Local logs (spec/50: transcripts land here; delete the folder to purge in one action)
 logs/
 
-# Working notes — the spec, the roadmap, the build log. Local only: they are drafting
-# material, not documentation, and not for public consumption.
-spec/
+# The comment-review work record: quotes lines removed for publication, so it stays local.
+spec/comment-review.md
 
 # Obsidian vault config: personal editor layout, plus vendored third-party themes.
 .obsidian/

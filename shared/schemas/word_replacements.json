@@ -1,5 +1,5 @@
 {
   "version": "0.1.0",
-  "description": "Deterministic find-and-replace applied to the raw transcript BEFORE cleanup (D15, spec/60). For acronyms, names, and jargon the speech-to-text reliably mishears. Each entry replaces whole-word, case-insensitive occurrences of `from` with `to` exactly (`to` is literal — no regex). Applied top to bottom, so list a longer phrase before any shorter word it contains. User-curated: add your own; an empty list is a no-op and dictation is unaffected.",
+  "description": "Deterministic find-and-replace applied to the raw transcript BEFORE cleanup. For acronyms, names, and jargon the speech-to-text reliably mishears. Each entry replaces whole-word, case-insensitive occurrences of `from` with `to` exactly (`to` is literal — no regex). Applied top to bottom, so list a longer phrase before any shorter word it contains. User-curated: add your own; an empty list is a no-op and dictation is unaffected.",
   "replacements": []
 }

@@ -1,12 +1,12 @@
-"""B2 — the OpenAI-compatible adapter (Contract B, spec/20).
+"""B2: the OpenAI-compatible adapter (Contract B).
 
 One class for every provider that speaks OpenAI's `/v1/chat/completions`, which is all of them
 except Anthropic: **Groq, OpenAI, xAI, DeepSeek, Mistral, OpenRouter** and **Google**'s compat
 layer in the cloud, plus **Ollama, LM Studio and llama.cpp** locally. What differs between them
 is a base URL and a credential, and both come from the catalogue
-(`shared/schemas/settings.json`, hard rule 3) — so this is one adapter, not nine.
+(`shared/schemas/settings.json`, the source of truth) — so this is one adapter, not nine.
 
-That is also why spec/20's B2 row was widened rather than a fourth row added (D30): "local
+That is also why the B2 row was widened rather than a fourth row added: "local
 OpenAI-compatible server" and "cloud OpenAI-compatible API" were never two pieces of code.
 
     python -m backend.llm.compat groq "what time is it in Tokyo?"   # live round-trip
@@ -36,8 +36,8 @@ from .providers import base_url, card, credential_for, wire_names
 
 log = logging.getLogger("nothal.compat")
 
-# not-hal's OWN name for every request knob this adapter can send. What each provider CALLS them is
-# the catalogue's business (`wire_names`, D44) — this adapter must never spell one itself, because
+# The app's OWN name for every request knob this adapter can send. What each provider CALLS them is
+# the catalogue's business (`wire_names`) — this adapter must never spell one itself, because
 # it serves ten providers that share a wire and not a dialect. The selfcheck asserts every name
 # here is spelled in the schema, so adding a knob without teaching the catalogue fails offline.
 KNOBS = ("max_output_tokens", "effort", "temperature")
@@ -54,8 +54,8 @@ LOCAL_TIMEOUT_S = 600.0
 
 
 def _error_kind(exc: Exception, offered_tools: bool = False) -> str:
-    """Map an SDK exception to a shared Contract B Error kind (spec/20) by its TYPE and status
-    code — never by matching the message prose (B-02).
+    """Map an SDK exception to a shared Contract B Error kind by its TYPE and status
+    code — never by matching the message prose.
 
     Same ladder as B1, and for the same reason: every provider here collapses context overflow
     and other bad requests into one 400, so a 400 maps to `unknown` (the generic apology)
@@ -73,7 +73,7 @@ def _error_kind(exc: Exception, offered_tools: bool = False) -> str:
     the exception is a bare `APIError` with NO status code — not the 400 you would expect and
     not an `APIStatusError` at all. Both forms are mapped, since a provider that rejects before
     streaming would give the 400 instead. Still typed on (exception type, status code, whether
-    tools were in play), reading no prose — B-02 holds. Being wrong costs one retried round: a
+    tools were in play), reading no prose, so the type-and-status rule holds. Being wrong costs one retried round: a
     mid-stream hiccup narrates as a bad tool call, and a retry was the right answer anyway.
     """
     import openai
@@ -88,7 +88,7 @@ def _error_kind(exc: Exception, offered_tools: bool = False) -> str:
     if isinstance(exc, openai.NotFoundError):
         # 404: the model we were told to use is not there. Distinct from `unavailable` (the server
         # answered) and from `unknown` (we would be throwing away a precise, actionable cause and
-        # narrating a shrug — the can't-rendered-as-didn't failure D36 fixed for tool calls).
+        # narrating a shrug — the can't-rendered-as-didn't failure already fixed for tool calls).
         # Commonest cause by far is a model deleted from a local runner after being configured.
         # MUST precede the APIStatusError branch below: NotFoundError is a subclass of it.
         # A 404 could also be a wrong base-URL path, which is why the spoken line points at the
@@ -109,8 +109,8 @@ def _tools_for_api(tools: list[ToolSpec]) -> list[dict]:
     """Contract T registry entries -> OpenAI function-tool objects.
 
     Translation lives in the adapter because it IS the provider's wire format, exactly like
-    error mapping (spec/20). `shared/schemas/tools.json` spells the JSON-schema key `parameters`
-    and carries a `tier` field, which is not-hal's safety business and not something to ship to
+    error mapping. `shared/schemas/tools.json` spells the JSON-schema key `parameters`
+    and carries a `tier` field, which is the app's safety business and not something to ship to
     a provider — so the registry entry is never passed through verbatim.
     """
     return [
@@ -154,8 +154,8 @@ class CompatModel:
         self._client = None          # built on first use, then kept — see _client_once()
 
     def _client_once(self):
-        """One client for this adapter's life, resting on Contract B's one-loop guarantee
-        (spec/20). Same two costs avoided as in B1: a fresh TCP+TLS handshake per turn, and
+        """One client for this adapter's life, resting on Contract B's one-loop guarantee.
+        Same two costs avoided as in B1: a fresh TCP+TLS handshake per turn, and
         ~190 ms of CPU re-reading this machine's CA bundle (`ssl_context()` memoises it).
 
         `DefaultAsyncHttpxClient`, NOT a bare `httpx.AsyncClient`: the SDK passes a supplied
@@ -197,13 +197,13 @@ class CompatModel:
             {"role": "system", "content": session.system or DEFAULT_SYSTEM}
         ]
         messages += list(session.history)
-        # An empty utterance is the tool-loop CONTINUE signal (spec/20): the tool results are
+        # An empty utterance is the tool-loop CONTINUE signal: the tool results are
         # already in history (record_tool_round wrote them), so add no user turn.
         if utterance:
             messages.append({"role": "user", "content": utterance})
 
         # Structure — the shape of the wire itself, which is what this adapter IS. Below it, the
-        # KNOBS, named in not-hal's vocabulary and spelled by the catalogue on the way out (D44).
+        # KNOBS, named in the app's vocabulary and spelled by the catalogue on the way out.
         kwargs: dict[str, Any] = dict(model=self.model, messages=messages, stream=True)
         knobs: dict[str, Any] = {
             "max_output_tokens": session.max_tokens or MAX_TOKENS,   # transform lifts this
@@ -217,7 +217,7 @@ class CompatModel:
         # declaring it: sending an effort a provider does not accept is rejected server-side and
         # costs the whole turn, and `"none"` is not universal (Ollama documents it, OpenAI's
         # declared scale does not include it). A provider that cannot say "don't think" simply
-        # isn't told, and may think — spec/20 calls that a degradation, not an error.
+        # isn't told, and may think — a degradation, not an error.
         efforts = (self.card.get("capabilities", {}) or {}).get("effort")
         efforts = list(efforts) if isinstance(efforts, (list, tuple)) else []
         # Some providers REQUIRE a particular effort on any round that offers tools, and the card
@@ -253,7 +253,7 @@ class CompatModel:
         return kwargs
 
     def _spell(self, knobs: dict[str, Any]) -> dict[str, Any]:
-        """not-hal's knob names -> what THIS provider calls them (D44).
+        """The app's knob names -> what THIS provider calls them.
 
         Three outcomes, and the difference between the last two is the point:
         - a name: send it under that name;
@@ -333,9 +333,9 @@ class CompatModel:
                 try:
                     parsed = json.loads(slot["args"] or "{}")
                 except ValueError:
-                    # The reserved kind, finally used: spec/20 anticipates exactly this on the
+                    # The reserved kind, finally used: this is exactly what happens on the
                     # OpenAI wire, where a small or local model can emit arguments that never
-                    # parse. The retry spec/20 mentions belongs to the tool loop, not here.
+                    # parse. The retry belongs to the tool loop, not here.
                     yield Error(
                         "malformed_tool_call",
                         f"{slot['name'] or '?'} arguments are not JSON: {slot['args'][:200]!r}",
@@ -361,7 +361,7 @@ class CompatModel:
         """Append one completed tool round to `session.history` in OpenAI's wire shape, so the
         next converse round (driven with an empty utterance) sees the tool_calls and their results.
         Wire format, so it lives here like tool translation and error mapping; the orchestrator
-        owns the loop and executes the tools (spec/20).
+        owns the loop and executes the tools.
 
         `results` maps a tool_call id -> its result string. This wire wants ONE assistant message
         carrying the `tool_calls` array, then ONE `tool` message per result — the mirror of B1's
@@ -411,20 +411,20 @@ def _selfcheck() -> None:
             e.status_code = status
         return e
 
-    # Error mapping is by exception TYPE and status code, never message prose (B-02).
+    # Error mapping is by exception TYPE and status code, never message prose.
     assert _error_kind(_exc(openai.AuthenticationError)) == "auth"
     assert _error_kind(_exc(openai.RateLimitError)) == "rate_limit"
     assert _error_kind(_exc(openai.APIConnectionError)) == "unavailable"
     assert _error_kind(_exc(openai.InternalServerError, 500)) == "unavailable"
     assert _error_kind(_exc(openai.BadRequestError, 400)) == "unknown", \
-        "a 400 must map to the generic apology — no prose-guessing at 'context' (B-02)"
+        "a 400 must map to the generic apology — no prose-guessing at 'context'"
     # A 404 is neither a 5xx nor a shrug: the cause is precise and actionable, so it gets
     # its own kind describing the error rather than the generic apology.
     assert _error_kind(_exc(openai.NotFoundError, 404)) == "no_model", "a bad model id is nameable"
     assert _error_kind(RuntimeError("boom")) == "unknown"
 
     # ...except on a round that OFFERED tools, where a 400 is the provider rejecting its own
-    # model's broken tool call server-side (D36). It becomes the kind the tool loop retries.
+    # model's broken tool call server-side. It becomes the kind the tool loop retries.
     # A 404 is the model we were told to use not being there — commonly one deleted from a local
     # runner after it was configured. It must NOT fall through to `unknown`: Ollama tells us the
     # exact cause and a shrug would throw that away. NotFoundError subclasses APIStatusError, so
@@ -453,7 +453,7 @@ def _selfcheck() -> None:
     assert _error_kind(_exc(openai.APITimeoutError), offered_tools=True) == "unavailable"
 
     # Tool translation: the registry's OWN entries must survive it, since that is the shape the
-    # model will really be handed. `tier` is not-hal's business and must never reach a provider.
+    # model will really be handed. `tier` is the app's business and must never reach a provider.
     from shared.config import load_schemas
 
     registry = load_schemas()["tools"]["tools"]
@@ -478,13 +478,13 @@ def _selfcheck() -> None:
     k = groq._kwargs(s, "now", [])
     assert k["messages"][0]["role"] == "system" and k["messages"][0]["content"] == DEFAULT_SYSTEM
     assert [m["content"] for m in k["messages"][1:]] == ["before", "reply", "now"], k["messages"]
-    assert k["stream"] is True, "adapters MUST stream (spec/20)"
+    assert k["stream"] is True, "adapters MUST stream"
     assert k["stream_options"] == {"include_usage": True}, "cloud turns should report usage"
     assert "tools" not in k, "no tools key at all when the list is empty"
     assert "reasoning_effort" not in k, "effort must not be sent unasked"
 
-    # D44 — this adapter serves ten providers that share a wire and not a dialect, so it names
-    # knobs in not-hal's vocabulary and the catalogue spells them. Every knob it can emit must be
+    # This adapter serves ten providers that share a wire and not a dialect, so it names
+    # knobs in the app's vocabulary and the catalogue spells them. Every knob it can emit must be
     # spelled for the wire, or a request silently goes out missing it.
     from .providers import schema as _settings_schema
     _wire_default = _settings_schema().get("wire_names", {}).get("openai", {})
@@ -532,7 +532,7 @@ def _selfcheck() -> None:
     kc = groq._kwargs(Session(id="t", history=[{"role": "user", "content": "q"}]), "", [])
     assert [m["role"] for m in kc["messages"]] == ["system", "user"], kc["messages"]
 
-    # Tool-loop threading (spec/20): a completed round serialises in OpenAI's wire shape — one
+    # Tool-loop threading: a completed round serialises in OpenAI's wire shape — one
     # assistant message carrying the tool_calls array, then one `tool` message per result.
     st = Session(id="t")
     CompatModel.record_tool_round(
@@ -587,7 +587,7 @@ def _selfcheck() -> None:
                             Session(id="t", local_only=True)))
     assert isinstance(err, Error) and err.kind == "unavailable", err
     # ...but a LOCAL provider must serve a local_only session: that is the whole point of B2's
-    # local half, and refusing here would make M2's privacy mode unimplementable.
+    # local half, and refusing here would make a local-only privacy mode unimplementable.
     ok = asyncio.run(first(CompatModel("ollama", model="m"), Session(id="t", local_only=True)))
     assert not (isinstance(ok, Error) and "local_only" in ok.detail), \
         "a local runner must accept a local_only session"
@@ -600,7 +600,7 @@ def _selfcheck() -> None:
     assert asyncio.run(first(CompatModel("groq", model="m", api_key=None))).kind in \
         ("auth", "no_model")
 
-    # Client lifetime (spec/20). No network: every cost here is local CPU.
+    # Client lifetime. No network: every cost here is local CPU.
     assert ssl_context() is ssl_context(), "the CA bundle must be parsed once per process"
     first_client = groq._client_once()
     assert groq._client_once() is first_client, "the client must be built once and kept"
@@ -636,12 +636,12 @@ def _selfcheck() -> None:
 
     print(f"selfcheck OK: {len(served)} providers on one adapter, tool translation drops `tier`, "
           "system-as-message, effort gated by capability, every knob spelled by the catalogue "
-          "and none by this adapter (D44), error mapping by type/status, "
+          "and none by this adapter, error mapping by type/status, "
           "client built once with the long read timeout intact")
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="not-hal B2 OpenAI-compatible adapter (spec/20)")
+    ap = argparse.ArgumentParser(description="Talk to an OpenAI-compatible provider directly")
     ap.add_argument("provider", nargs="?", help="catalogue id: groq, openai, ollama, …")
     ap.add_argument("question", nargs="?", help="prompt to send")
     ap.add_argument("--model", default=None, help="model id (required for cloud providers)")

@@ -6,7 +6,7 @@ from backend.orchestrator import (
     DEFAULT_SYSTEM, disabled_note, Session, _one_round, _start_local_servers,
 )
 
-# The latency suite (ROADMAP, 2026-08-03). Built for VOLUME and reported at the TAIL, because the
+# The latency suite, added 2026-08-03. Built for VOLUME and reported at the TAIL, because the
 # fault it exists to catch is rare: one run in thirty took 14.58 s with reasoning already off, and
 # a median hides that completely. It times the two stages a user actually waits on — speech-to-text
 # and one model round — because a slow tail in STT feels identical to a slow tail in the model and
@@ -45,7 +45,7 @@ def _check_latency(runs: int) -> None:
     # --- speech-to-text: the same real WAV, repeatedly. Never measured as a distribution before.
     wav = Path(__file__).resolve().parent / "replay" / "wav" / "key_short.wav"
     if not wav.exists():
-        print(f"STT   skipped — no {wav.name} (the replay WAVs are Thomas's voice, gitignored)")
+        print(f"STT   skipped — no {wav.name} (the replay WAVs are a recorded voice, gitignored)")
     else:
         import wave as _w
         with _w.open(str(wav), "rb") as w:

@@ -5,9 +5,9 @@ writes it, the bridge reads it FRESH at each decision point, so a change takes e
 next turn with no restart and no file-watcher. Stdlib only — the bridge must read this
 headless, without Qt.
 
-spec/70 §2: settings travel by FILE, not over the status socket — this is that file.
+Settings travel by FILE, never over the status socket — this is that file.
 
-The knobs themselves live in `shared/schemas/settings.json` (hard rule 3), not here: defaults,
+The knobs themselves live in `shared/schemas/settings.json`, not here: defaults,
 labels, help text and which pane a row belongs to are all read from it, by this module and by
 the settings window alike. Adding a setting means editing that JSON and nothing else.
 """
@@ -34,15 +34,15 @@ def spec(key: str) -> dict:
 
 
 def defaults() -> dict[str, object]:
-    """Every default, derived from the schema — never restated in Python (hard rule 3)."""
+    """Every default, derived from the schema — never restated in Python."""
     return {k: v["default"] for k, v in schema()["settings"].items()}
 
 
 def settings_path() -> Path:
     r"""%APPDATA%
 othalsettings.json on Windows; ~/.config/nothal/settings.json elsewhere.
-    NOTHAL_SETTINGS overrides the whole path (tests + power users), matching spec/70's env-override
-    pattern. Location chosen here (spec/70 §4) so every writer and reader agrees."""
+    NOTHAL_SETTINGS overrides the whole path (tests + power users), matching the env-override
+    pattern. Location chosen here so every writer and reader agrees."""
     override = os.environ.get("NOTHAL_SETTINGS")
     if override:
         return Path(override)
@@ -83,7 +83,7 @@ def set(key: str, value) -> None:
     data[key] = value
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     # A structured value is logged as its SHAPE, never verbatim: keys live in the OS credential
-    # store (spec/50 rule 10), and the log is this file's shadow — dumping a whole dict at INFO is
+    # store, and the log is this file's shadow — dumping a whole dict at INFO is
     # one careless field away from writing a secret down. Scalars are safe and useful to see; the
     # `models` dict (the only structured value today) is logged as its provider ids alone.
     if isinstance(value, dict):
@@ -101,7 +101,7 @@ if __name__ == "__main__":
 
     d = defaults()
     assert d["tts"] is False and d["pings"] is True, d
-    assert d["listen_for_me"] is False, "the mic must be shut by default (D23)"
+    assert d["listen_for_me"] is False, "the mic must be shut by default"
     assert d["skip_permissions"] is False, "a permission bypass must never default on"
     # Every declared setting is renderable: it names a real pane, or opts out with null.
     panes = {p["id"] for p in schema()["panes"]}

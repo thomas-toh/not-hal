@@ -1,8 +1,8 @@
-"""D15 word-replacement (spec/60): a deterministic find-and-replace over a transcript,
+"""Word-replacement: a deterministic find-and-replace over a transcript,
 applied BEFORE the LLM cleanup. The exact way to fix acronyms, names and jargon the STT
-reliably mishears — a lookup, not a model guess (the deterministic-first principle, ROADMAP).
+reliably mishears — a lookup, not a model guess (the deterministic-first principle).
 
-The table is shared/schemas/word_replacements.json (hard rule 3 — the schema is the truth, this
+The table is shared/schemas/word_replacements.json (the schema is the truth, this
 loads it), user-curated. An empty list is a no-op, so dictation is unaffected until the user
 adds entries, and cleanup being off does not skip it — deterministic fixes always apply.
 """

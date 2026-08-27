@@ -1,10 +1,10 @@
-"""Deterministic text delivery for dictation (spec/60, D12): put text on the clipboard and send
+"""Deterministic text delivery for dictation: put text on the clipboard and send
 a synthetic Ctrl+V. User-initiated and deterministic — NEVER a Contract-T tool, and the model
-never chooses to paste (spec/50). The transcript stays in RAM until this point; the clipboard is
+never chooses to paste. The transcript stays in RAM until this point; the clipboard is
 the delivery, not a log.
 
 Issued by the DAEMON, not the overlay: a paste lands wherever keyboard focus is, and the overlay
-is deliberately never focusable (spec/40), so it is the wrong process to send the keys from.
+is deliberately never focusable, so it is the wrong process to send the keys from.
 
 stdlib ctypes only — a dozen Win32 calls do not earn a pywin32/pyperclip dependency. macOS is a
 later seam: there the functions no-op with a warning, exactly as the hotkeys do.
@@ -127,7 +127,7 @@ def send_paste() -> None:
 
 
 def paste_text(text: str, restore: bool = True) -> bool:
-    """Deliver `text` to the focused app: set the clipboard, send Ctrl+V (D12). Best-effort
+    """Deliver `text` to the focused app: set the clipboard, send Ctrl+V. Best-effort
     restores the previous clipboard text afterwards so dictation does not silently clobber what
     you had copied. Returns whether the text was placed and the paste sent.
 
@@ -169,7 +169,7 @@ def _selfcheck() -> None:
 
     # On Windows, round-trip the clipboard WITHOUT sending keystrokes (no focused target in CI).
     # A locked/headless session can refuse OpenClipboard; that is an environment limit, not a bug,
-    # so skip rather than false-fail — the paste chord itself is proven live on the box.
+    # so skip rather than false-fail — the paste chord itself is proven live on a real machine.
     original = get_clipboard_text()
     sentinel = "nothal-paste-selfcheck-é—你好"   # accents, em-dash, CJK
     if not set_clipboard_text(sentinel):
@@ -178,7 +178,7 @@ def _selfcheck() -> None:
     got = get_clipboard_text()
     assert got == sentinel, f"clipboard round-trip corrupted the text: {got!r}"
     if original is not None:
-        set_clipboard_text(original)     # leave the developer's clipboard as we found it
+        set_clipboard_text(original)     # leave the clipboard as we found it
     print("paste selfcheck OK (win32): unicode clipboard round-trip clean, previous text restored")
 
 
@@ -188,7 +188,7 @@ def main() -> None:
     from shared.log import setup_logging
 
     setup_logging()
-    ap = argparse.ArgumentParser(description="not-hal dictation delivery — clipboard + Ctrl+V (D12)")
+    ap = argparse.ArgumentParser(description="Paste text into the active window")
     ap.add_argument("text", nargs="?", help="text to deliver to the focused window")
     ap.add_argument("--selfcheck", action="store_true", help="no keystrokes: round-trip + encoders")
     ap.add_argument("--no-restore", action="store_true", help="don't restore the prior clipboard")

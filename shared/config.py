@@ -1,8 +1,8 @@
 """Locate the repo and load the executable schemas in shared/schemas/*.json.
 
-Hard rule 3 (CLAUDE.md): the schemas are the single source of truth. Code LOADS
-them here and references the result — it never copies schema values into Python.
-Adding a tool/earcon/message type means editing the JSON, not this file.
+The schemas are the single source of truth. Code LOADS them here and references
+the result — it never copies schema values into Python. Adding a tool/earcon/message
+type means editing the JSON, not this file.
 """
 from __future__ import annotations
 
