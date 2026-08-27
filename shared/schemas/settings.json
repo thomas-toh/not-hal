@@ -1,0 +1,328 @@
+{
+  "$comment": "not-hal user settings — EXECUTABLE TRUTH (CLAUDE.md hard rule 3). shared/settings.py derives its DEFAULTS from `settings` here, and frontend/SettingsWindow.qml renders its panes from the same file, so a knob is added by editing THIS and nothing else. Never restate a default or a label in code.",
+  "version": "0.3.0",
+
+  "panes": [
+    {
+      "id": "general",
+      "label": "General",
+      "groups": [
+        { "id": "profile",     "label": "Profile" },
+        { "id": "preferences", "label": "Preferences" }
+      ]
+    },
+    { "id": "models",     "label": "Models" },
+    { "id": "connectors", "label": "Connectors" },
+    { "id": "triggers",   "label": "Triggers" }
+  ],
+
+  "$comment_vram": "`local_two_model_note` holds the text the Models pane shows when two roles resolve to different models on the SAME local provider. Stated as a fact, never computed: judging whether both fit would need total VRAM, current usage and each model's loaded footprint, and would be wrong often enough to be an annoyance. The failure it warns about is invisible — no error, just a full model reload on every switch between Ask and Dictate, which reads as 'dictation is randomly slow'.",
+  "$comment_settings": "One entry per knob. `built: false` renders the row dimmed and its control disabled — the setting is decided but its consumer does not exist yet. `pane: null` means no UI row at all (the value is still read by the daemon). `help` is shown only where the consequence cannot be inferred from the label.",
+  "$comment_connectors": "D38 — the consent gate, one `connector_*` entry per connector at the end of `settings`. `connector` holds the id that schemas/tools.json matches, so a card lists the tools it enables by READING the registry rather than restating them (hard rule 3); `help` is what that connector reaches, shown on the card because switching one on must be consent to something specific rather than to a category. Anything reading personal data is OFF by default (the D23 precedent: a capability stays off until it is asked for) — System is on because the time and the battery are not personal data. Key order is display order. Adding a connector is one entry here plus a `connector` on the tools that belong to it; no UI work.",
+  "settings": {
+    "profile_name": {
+      "type": "text", "default": "", "pane": "general", "group": "profile",
+      "label": "Full name", "built": true,
+      "$comment": "Profile fields persist today; the PERSONA that reads them is M0.5 (spec/00, Track B). Recorded in STATE as owed."
+    },
+    "profile_called": {
+      "type": "text", "default": "", "pane": "general", "group": "profile",
+      "label": "What should you be called?", "built": true
+    },
+    "profile_work": {
+      "type": "text", "default": "", "pane": "general", "group": "profile",
+      "label": "What describes your work?", "built": true
+    },
+    "profile_instructions": {
+      "type": "textarea", "default": "", "pane": "general", "group": "profile",
+      "label": "Specific instructions", "built": true
+    },
+
+    "theme": {
+      "type": "enum", "default": "system", "pane": "general", "group": "preferences",
+      "label": "Theme", "control": "segmented",
+      "choices": ["light", "dark", "system"], "built": false,
+      "$comment": "Dimmed: the app draws one (dark) theme, so choosing light would change nothing. Un-dim when a light palette exists."
+    },
+    "language": {
+      "type": "enum", "default": "English", "pane": "general", "group": "preferences",
+      "label": "Language", "control": "dropdown", "built": false,
+      "choices": ["English", "Fran\u00e7ais", "Deutsch", "Espa\u00f1ol", "Italiano",
+                  "Nederlands", "Portugu\u00eas", "\u4e2d\u6587", "\u65e5\u672c\u8a9e"],
+      "$comment": "Dimmed: nothing is localised, and STT/TTS are English models (spec/00 fixed platform decisions)."
+    },
+    "pings": {
+      "type": "bool", "default": true, "pane": "general", "group": "preferences",
+      "label": "Pings",
+      "help": "Audible tones when listening starts, a task completes, or an error occurs.",
+      "built": true,
+      "$comment": "D28. The three designed earcons; a separate channel from spoken TTS."
+    },
+    "listen_for_me": {
+      "type": "bool", "default": false, "pane": "general", "group": "preferences",
+      "label": "Listen for me",
+      "help": "Always-on microphone. Listens for its wake word, and lets you talk over a spoken reply to cut it short.",
+      "built": true,
+      "$comment": "D23. On = wake word + barge-in; off = the mic opens only on a keypress. Drives the tray's on-air lamp (D29)."
+    },
+    "tts": {
+      "type": "bool", "default": false, "pane": "general", "group": "preferences",
+      "label": "Read for me",
+      "help": "Answers are read aloud as well as shown.",
+      "built": true,
+      "$comment": "D23/D28. Key name stays `tts` \u2014 the file already written to %APPDATA% uses it."
+    },
+    "dwell_quick": {
+      "type": "enum",
+      "default": "2.5 s",
+      "pane": "general",
+      "group": "preferences",
+      "label": "Keep a confirmation on screen for",
+      "control": "dropdown",
+      "choices": ["1.5 s", "2.5 s", "4 s", "8 s"],
+      "help": "The island stays on-screen for a short time after confirming an action has completed",
+      "built": true,
+      "$comment": "D43. A CHOICE, not a free number: a dropdown of sensible durations needs no new control (spec/70 §2's WORDS class) and no new schema type, and it cannot be set to 0 or to something absurd. The overlay reads the number off the front of the string, which is why every choice must start with one — asserted in frontend/overlay_check.py so a hand-edited choice that does not parse fails offline instead of freezing the island at its default."
+    },
+    "dwell_slow": {
+      "type": "enum",
+      "default": "20 s",
+      "pane": "general",
+      "group": "preferences",
+      "label": "Keep an answer on screen for",
+      "control": "dropdown",
+      "choices": ["10 s", "20 s", "40 s", "90 s"],
+      "help": "The island stays on-screen for an extended time after answering, to allow you to read the response.",
+      "built": true,
+      "$comment": "D43. Was the fixed 20 s of Theme.durationAnswerDwell, which is still the default and the fallback if this cannot be read."
+    },
+    "al_in_island": {
+      "type": "bool", "default": true, "pane": "general", "group": "preferences",
+      "label": "Show Al in the island", "built": true,
+      "$comment": "D35. Off restores the pre-Al island exactly \u2014 padding, wave width and text column all fall back to their original formulas (asserted in frontend/overlay_check.py)."
+    },
+    "local_server_stop_on_quit": {
+      "type": "bool", "default": true, "pane": "general", "group": "preferences",
+      "label": "Stop the local model server on quit",
+      "help": "A local server is started when running a local model, and closed on shutdown.",
+      "built": true,
+      "$comment": "Moved to General > Preferences (Thomas, 2026-08-02). Governs ONLY a server not-hal itself started \u2014 one already running when not-hal arrived is never stopped, whatever this says (a safety property, not a preference: it may be doing someone else's work). Best-effort on Windows: run.py asks the daemon to stop first (CTRL_BREAK) so this can run, but a hard kill skips it and leaves the server idling until its own keep-alive evicts the model. The Job Object tie (launcher C2, STATE parked) is the complete fix."
+    },
+
+    "models": {
+      "type": "object", "default": {}, "pane": "models",
+      "label": "Models", "built": true,
+      "$comment": "Providers the user has added, keyed by provider id -> {on, model, effort, thinking, ...}. Rendered as cards, not a row. KEY ORDER IS THE DISPLAY ORDER \u2014 moveProvider rewrites the dict to reorder."
+    },
+    "primary": {
+      "type": "string", "default": "", "pane": null,
+      "label": "Primary model", "built": true,
+      "$comment": "Which enabled provider answers, while more than one is enabled. Stands in for the per-role router (spec/20 reserved, STATE parked)."
+    },
+    "cleanup_dictation_on": {
+      "type": "bool", "default": true, "pane": null,
+      "label": "Tidy dictation", "built": true,
+      "$comment": "Paired with `cleanup_dictation` via its `toggledBy` \u2014 one row, two values. Read by `orchestrator._dictate`: off skips the transform and pastes the raw transcript."
+    },
+    "cleanup_dictation": {
+      "type": "provider", "default": "", "pane": "models",
+      "label": "Tidy dictation", "toggledBy": "cleanup_dictation_on", "modelKey": "cleanup_dictation_model", "built": true,
+      "$comment": "S-06/D15. Resolved by the router (D33) as the `cleanup_dictation` role; unset falls back to CLEANUP_PROVIDER. `modelKey` names the companion setting holding a per-ROLE model override (see there)."
+    },
+    "cleanup_dictation_model": {
+      "type": "string", "default": "", "pane": null,
+      "label": "Model", "built": true,
+      "$comment": "Per-role model override, drawn on the Tidy dictation card and linked from it by `modelKey`. Empty = use whatever model the provider's own card names, which is the pre-existing behaviour. It exists because model hangs off the PROVIDER card, so two roles naming one provider are otherwise forced to share a model — cleanup wants a small fast model while the assistant wants a large one. Narrow by design: it does NOT pre-empt spec/20's Layer 2 (several named instances per provider), which subsumes it."
+    },
+    "cleanup_prompts_on": {
+      "type": "bool", "default": true, "pane": null,
+      "label": "Tidy spoken prompts", "built": false
+    },
+    "cleanup_prompts": {
+      "type": "provider", "default": "", "pane": "models",
+      "label": "Tidy spoken prompts", "toggledBy": "cleanup_prompts_on", "built": false,
+      "$comment": "S-06/D15 --clean-prompts. Serves the ASK door, but filed under Dictate with its sibling (Thomas, 2026-07-24) \u2014 both are transcript cleanup. Unbuilt."
+    },
+
+    "hotkey_ask": {
+      "type": "binding", "default": "ctrl+alt+1", "pane": "triggers",
+      "label": "Ask", "built": true,
+      "$comment": "D20. Parsed by backend/hotkeys.py, which rejects a modifier-less binding."
+    },
+    "hotkey_dictate": {
+      "type": "binding", "default": "ctrl+alt+2", "pane": "triggers",
+      "label": "Dictate", "built": true,
+      "$comment": "D20. Registered today; its pipeline is Track D."
+    },
+    "auto_end": {
+      "type": "bool", "default": false, "pane": "triggers",
+      "label": "Listen for when I stop talking",
+      "help": "The end of your sentence is recognised automatically.",
+      "built": true,
+      "$comment": "Live today on the VAD silence cut (silence_ms). Semantic endpointing (M1, STATE parked) replaces the MECHANISM later with no UI change \u2014 the help text describes the destination, decided 2026-07-24."
+    },
+    "silence_ms": {
+      "type": "int", "default": 1000, "pane": null,
+      "label": "Silence before a turn ends", "built": true,
+      "$comment": "No UI row (decided 2026-07-24): it tunes the interim mechanism behind auto_end and retires when semantic endpointing lands. --silence-ms still overrides."
+    },
+    "hotkeys_paused_until": {
+      "type": "number", "default": 0, "pane": null,
+      "label": "Hotkeys paused until", "built": true,
+      "$comment": "Not a preference — the lease the settings window holds while its key recorder is listening, so the daemon unregisters the doors and the combo being rebound reaches the field instead of opening a turn. A DEADLINE (epoch seconds) rather than a flag: a window that dies mid-recording would leave a flag stuck on and the machine with no doors, whereas a lease expires by itself (backend/hotkeys.PAUSE_LEASE_S). 0 = not paused. Settings travel by file, so this is the sanctioned channel; the status socket still only carries `dismiss` (spec/50 rule 12)."
+    },
+    "skip_permissions": {
+      "type": "bool", "default": false, "pane": "triggers",
+      "label": "Dangerously skip permissions",
+      "help": "Certain tasks require permission. These can be skipped, but you bear all consequences for any action taken while permissions are skipped.",
+      "built": false,
+      "$comment": "Supersedes D20's narrower `auto_apply`: skips EVERY gate including the Tier-3 confirmation. That converts a spec/50 + CLAUDE.md rule-4 design constant into a preference and needs its own decision record before the executor lands (M1). Placeholder disclaimer."
+    },
+
+    "local_two_model_note": {
+      "type": "string", "pane": null, "built": false,
+      "default": "Ask and Dictate use different local models and would be limited by memory.",
+      "label": "Two-model VRAM note",
+      "$comment": "`built: false` — the TEXT is settled and lives here so the window can render it without restating a string in QML (hard rule 3), but the condition and the placement are Models-pane work, owed."
+    },
+
+    "connector_system": {
+      "type": "bool", "default": true, "pane": "connectors",
+      "label": "System", "connector": "system",
+      "help": "The time and date, the battery, and the title of whichever window is in front.",
+      "built": true
+    },
+    "connector_files": {
+      "type": "bool", "default": false, "pane": "connectors",
+      "label": "Files", "connector": "files",
+      "help": "The names and contents of files Windows has already indexed on this PC, so you can be told where one is. Nothing is opened or read back to you.",
+      "built": true
+    },
+    "connector_email": {
+      "type": "bool", "default": false, "pane": "connectors",
+      "label": "Email", "connector": "email",
+      "help": "The sender, date and subject of mail in your desktop Outlook inbox. Message text is searched but never returned, and nothing is opened, replied to or sent.",
+      "built": true
+    },
+    "connector_clipboard": {
+      "type": "bool", "default": false, "pane": "connectors",
+      "label": "Clipboard", "connector": "clipboard",
+      "help": "Whatever you last copied, read on request.",
+      "built": true
+    },
+    "connector_web": {
+      "type": "bool", "default": false, "pane": "connectors",
+      "label": "Web", "connector": "web",
+      "help": "Pages and search results from the internet.",
+      "built": false,
+      "$comment": "Dimmed: no tool declares this connector yet — there is no web backend (STATE, Track T)."
+    },
+    "connector_apps_media": {
+      "type": "bool", "default": false, "pane": "connectors",
+      "label": "Apps & media", "connector": "apps_media",
+      "help": "Opening an app, bringing a window to the front, and the media and volume keys.",
+      "built": true,
+      "$comment": "Timers are deliberately not named here: set_timer is in the tool registry but has no backend, because a timer fires OUTSIDE a turn and Contract P has no message that can announce it (STATE, Track T). The help text describes what switching this on actually enables, not what the registry one day will."
+    },
+    "connector_mcp": {
+      "type": "bool", "default": false, "pane": "connectors",
+      "label": "MCP servers", "connector": "mcp",
+      "help": "Tools supplied by an MCP server you connect.",
+      "built": false,
+      "$comment": "D38 holds this slot dimmed deliberately. An MCP tool arrives at RUNTIME carrying no declared tier, so it cannot pass the gate spec/30 rule 1 depends on; admitting one needs its own decision and D-number."
+    }
+  },
+
+  "$comment_not_chat": "Substrings that mark a live-fetched model id as something other than a chat model, dropped from the picker by backend/llm/providers.py. A real problem rather than a speculative one: measured 2026-07-24, `GET /models` returns 15 ids for Groq and 129 for OpenAI, including speech-to-text, text-to-speech, embeddings, image generation and safety classifiers — none of which can serve a turn, so offering them as a model is a trap. Deliberately conservative: matched anywhere in the id, so anything ambiguous is left IN and merely looks odd, rather than hiding a model the user wanted. Add a substring here, never in code.",
+  "not_chat": ["whisper", "embedding", "tts-", "dall-e", "moderation", "prompt-guard", "safeguard", "orpheus", "rerank", "image", "babbage", "davinci"],
+
+  "$comment_no_context_capability": "There is deliberately NO `context` capability — do not re-add one. All three local cards carried `\"context\": true` until 2026-08-02 and nothing ever read it, because not-hal cannot set it: `num_ctx` is ignored on the OpenAI-compatible `/v1` wire, and even on Ollama's native API it is a LOAD-TIME property that reloads the model when changed, not a per-call dial. A capability is a promise that the window may offer the control AND the adapter may send it; this one could keep neither half, so it was an invitation to build a knob that does nothing (the `cleanup_dictation` toggle shipped exactly that way once). Context belongs to the runner: the user sets it in Ollama. Owed: say so in the README, which has no local-models section at all.",
+  "$comment_effort_labels": "How each reasoning-effort value is SHOWN. The values themselves are wire words a provider chose (`xhigh`, `none`) and print like a config file; the settings window renders these instead. One shared map rather than a per-card one, because the scale is common vocabulary and only the SUBSET each provider offers differs — that subset is the card's own `capabilities.effort`. Lives here and not in QML for the usual reason (hard rule 3): display wording is schema truth, exactly as a tool's `label` is. A value with no entry falls back to the raw wire word, so a provider adding a level renders readably before anyone touches this.",
+  "effort_labels": { "none": "None", "low": "Low", "medium": "Medium", "high": "High", "xhigh": "Extra", "max": "Max" },
+  "$comment_no_thinking_capability": "There is deliberately NO `thinking` capability on any card — do not re-add one without a consumer. Five cards carried it until 2026-08-03 (Anthropic, Google, xAI, DeepSeek, Ollama) and NOTHING in backend/ ever read it: the settings window drew a live toggle that no adapter could act on. Per provider: B1 sends no thinking parameter at all by design (backend/llm/claude.py — on Opus 4.8 that means thinking OFF, which is what a fast first spoken word needs, spec-40; it returns at M0.5). Google, xAI and DeepSeek express thinking through fields that are not on the OpenAI chat-completions wire, so B2 has nothing to send. Ollama CAN be told not to think, but through `effort: \"none\"` — one field carrying a switch AND a dial — so a separate toggle was two names for one parameter. Same ruling as the deleted `context` capability above: a capability is a promise that the window may offer the control AND an adapter may send it, and this one could keep only the first half. Guarded in frontend/settings_check.py, which asserts the RULE — re-add it the day an adapter reads it.",
+  "$comment_wire_names": "What each provider CALLS not-hal's request knobs (D44). An adapter names a knob in not-hal's own vocabulary — `max_output_tokens`, `effort`, `temperature` — and this says how that name is spelled on the way out. It exists because one adapter serves ten providers that share a wire but not a dialect: B2 sent OpenAI's classic `max_tokens` to everybody and called itself provider-agnostic, until OpenAI's current models started rejecting it outright (measured 2026-08-03: every assistant turn on gpt-5.6-sol failed with 'use max_completion_tokens instead'). Keyed by WIRE, because the default belongs to the protocol and not to any one provider; a card overrides only what it spells differently. A value of `null` means this provider HAS NO such knob and it is omitted deliberately — distinct from a name being missing altogether, which is a gap in this file and is logged as one. Adding a knob means adding it here first: backend/llm/compat.py asserts offline that every knob it can emit is spelled here (hard rule 3 — the code reads this, never restates it). B1/anthropic has an entry for completeness, but it serves exactly one provider, so there is no dialect to vary and the adapter does not consult this.",
+  "wire_names": {
+    "openai": {
+      "max_output_tokens": "max_tokens",
+      "effort": "reasoning_effort",
+      "temperature": "temperature"
+    },
+    "anthropic": {
+      "max_output_tokens": "max_tokens",
+      "effort": "effort",
+      "temperature": "temperature"
+    }
+  },
+  "$comment_providers": "The catalogue the Add-a-model flow offers, and the only place a provider's reachability is described (hard rule 3 — backend/llm/providers.py reads this, never restates it). Per card: `wire` names the protocol that serves it, and there are only two — `anthropic` (B1, backend/llm/claude.py) and `openai` (B2, backend/llm/compat.py, one adapter for the other ten). `api` is the base URL for a cloud provider, whose hosts genuinely differ; a local runner declares a user-editable `endpoint` (host:port) instead and B2 composes `http://<endpoint>/v1`, the compat convention Ollama, LM Studio and llama.cpp all share. `env` is the environment variable that stands in when the credential store holds nothing (CI, headless). `models` and `capabilities` are the OFFLINE FALLBACK: the live list comes from the provider's own `GET {api}/models` (Anthropic via its SDK), fetched off a background thread by the settings window, so a card shows what the account can really reach. `adapter` says whether backend/llm/ can CALL this provider — true everywhere as of D30, because one OpenAI-compatible adapter serves every non-Anthropic entry. Live-verified so far: Anthropic and Groq; the rest share their exact code path but nobody has held a key to them here yet.",
+  "providers": {
+    "anthropic": {
+      "name": "Anthropic", "where": "cloud", "auth": "key", "credential": "anthropic",
+      "wire": "anthropic", "api": "https://api.anthropic.com/v1", "env": "ANTHROPIC_API_KEY",
+      "adapter": true,
+      "models": ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
+      "capabilities": { "effort": ["low", "medium", "high", "xhigh", "max"] }
+    },
+    "openai": {
+      "name": "OpenAI", "where": "cloud", "auth": "key", "credential": "openai",
+      "wire": "openai", "api": "https://api.openai.com/v1", "env": "OPENAI_API_KEY",
+      "$comment_wire_names": "Two overrides, both because OpenAI's current models moved and the other nine providers on this wire did not. (1) `max_tokens` is gone from chat completions; `max_completion_tokens` replaced it, and sending the old name is rejected outright — every assistant turn on gpt-5.6-sol failed this way on 2026-08-03. (2) `temperature` is `null`: these models take no temperature knob, so it is dropped rather than sent. Null and not a `capabilities` entry, because `capabilities.temperature` decides which providers show the CONTROL in the settings window and only the local runners declare it — gating the wire on that field would have taken deterministic cleanup away from Groq, which relies on temperature 0. This says what the PROVIDER has; that says what the USER may set.",
+      "wire_names": { "max_output_tokens": "max_completion_tokens", "temperature": null },
+      "$comment_tool_round_effort": "OpenAI's reasoning models reject function tools combined with reasoning on /v1/chat/completions, and the fix is to SET the effort to 'none' on a tool round — not to omit it. Omitting was the first attempt and it failed identically: the request log showed no reasoning_effort going out and the API still answered 'Function tools with reasoning_effort are not supported for gpt-5.6-sol' (2026-08-03), because the model reasons at its own default when the parameter is absent. Read the provider's message literally. This is separate from `capabilities.effort` on purpose: that list is what the USER may choose, and 'none' must NOT be added to it — nobody should be able to pick this from the settings window. The consequence is that OpenAI tool turns do not reason, at all; the other route OpenAI offers is its /v1/responses endpoint, a different wire shape and a much larger piece of work — parked, and noted in STATE.",
+      "tool_round_effort": "none",
+      "adapter": true, "models": [], "capabilities": { "effort": ["low", "medium", "high"] }
+    },
+    "google": {
+      "name": "Google", "where": "cloud", "auth": "key", "credential": "google",
+      "$comment": "Reached through Gemini's OpenAI-compatibility layer rather than its own genai SDK, so it costs no second wire. Its `thinking` control is not an OpenAI-wire parameter, which is why the capability is declared but B2 does not send it yet.",
+      "wire": "openai", "api": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "env": "GEMINI_API_KEY",
+      "adapter": true, "models": [], "capabilities": {}
+    },
+    "groq": {
+      "name": "Groq", "where": "cloud", "auth": "key", "credential": "groq",
+      "wire": "openai", "api": "https://api.groq.com/openai/v1", "env": "GROQ_API_KEY",
+      "adapter": true, "models": [], "capabilities": {}
+    },
+    "mistral": {
+      "name": "Mistral", "where": "cloud", "auth": "key", "credential": "mistral",
+      "wire": "openai", "api": "https://api.mistral.ai/v1", "env": "MISTRAL_API_KEY",
+      "adapter": true, "models": [], "capabilities": {}
+    },
+    "xai": {
+      "name": "xAI", "where": "cloud", "auth": "key", "credential": "xai",
+      "wire": "openai", "api": "https://api.x.ai/v1", "env": "XAI_API_KEY",
+      "adapter": true, "models": [], "capabilities": {}
+    },
+    "deepseek": {
+      "name": "DeepSeek", "where": "cloud", "auth": "key", "credential": "deepseek",
+      "wire": "openai", "api": "https://api.deepseek.com/v1", "env": "DEEPSEEK_API_KEY",
+      "adapter": true, "models": [], "capabilities": {}
+    },
+    "openrouter": {
+      "name": "OpenRouter", "where": "cloud", "auth": "key", "credential": "openrouter",
+      "wire": "openai", "api": "https://openrouter.ai/api/v1", "env": "OPENROUTER_API_KEY",
+      "adapter": true, "models": [], "capabilities": {}
+    },
+    "ollama": {
+      "name": "Ollama", "where": "local", "auth": "endpoint", "endpoint": "127.0.0.1:11434",
+      "wire": "openai",
+      "$comment": "`effort` includes `none` because Ollama's OpenAI-compatible endpoint documents that value and treats it as thinking-OFF — one field carrying a switch AND a dial. It is the only way to reach the thinking toggle from here: Ollama's native `think` field and `chat_template_kwargs` are both ignored on /v1 (tested 2026-08-01, v0.32.5). A thinking model left to reason costs ~6.5 s on a dictation cleanup against ~0.45 s without, so `transform` always asks for `none`. Endpoint is 127.0.0.1, never `localhost`: the wasted IPv6 attempt costs ~2 s per connection on Windows.",
+      "$comment_serve": "`serve` is the argv not-hal runs to start this server headless when a role resolves here and nothing is listening. Declared per card, never hardcoded in an adapter, for the same reason as `api` and `credential` (D30). It is NOT a Contract T tool and spec/50 rule 1 does not apply: the model never sees it, and this argv is a fixed list from this file — nothing user- or model-composed reaches a shell. Only Ollama declares one; LM Studio and llama.cpp are left to the user to start. The binary is found on PATH, so a missing install is a no-op, not an error.",
+      "serve": ["ollama", "serve"],
+      "adapter": true, "models": [],
+      "capabilities": { "temperature": true,
+                        "keep_alive": true,
+                        "effort": ["none", "low", "medium", "high", "max"] }
+    },
+    "lmstudio": {
+      "name": "LM Studio", "where": "local", "auth": "endpoint", "endpoint": "127.0.0.1:1234",
+      "wire": "openai",
+      "adapter": true, "models": [], "capabilities": { "temperature": true }
+    },
+    "llamacpp": {
+      "name": "llama.cpp", "where": "local", "auth": "endpoint", "endpoint": "127.0.0.1:8080",
+      "wire": "openai",
+      "adapter": true, "models": [], "capabilities": { "temperature": true }
+    }
+  }
+}

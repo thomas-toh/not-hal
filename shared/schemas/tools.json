@@ -1,0 +1,93 @@
+{
+  "$comment": "Contract T tool registry — SINGLE SOURCE OF TRUTH (spec/30). The bridge loads this at startup; llm receive it as their tool list; the executor refuses calls not defined here. tier: 1=read-only, 2=reversible (earcon announce), 3=destructive (spoken confirmation required). Growth rule: adding a tool is tracked, not gated — STATE Track T records when each was built and whether it has been invoked in real use without misfiring.",
+  "$comment_connector": "D38: every tool also declares the CONSENT card it sits under. Tier and connector are orthogonal gates — the tier says whether not-hal MAY (danger, the designer's judgement), the connector says whether the user WANTS it to (consent, theirs). Both must pass or the tool is not offered and is refused if called. The id is matched to a `connector` setting in schemas/settings.json, which holds the label, the default and what it reaches; a new tool joins an existing card by naming it here, with no UI work.",
+  "$comment_label": "`label` is the tool said in a sentence a person would use, for the connector card to list — consent to a card has to be consent to something specific, and `description` is written for the model, not for a reader. It belongs here rather than in the window because the registry is the tool's own truth (hard rule 3); nothing in code or QML restates it.",
+  "version": "0.4.0",
+  "tools": [
+    {
+      "name": "system_status",
+      "tier": 1, "connector": "system", "label": "Read the time, battery and active window",
+      "description": "Report the current local date and time WITH its UTC offset (use the offset to work out the time in other time zones yourself), plus battery (if a laptop), volume level, active window title, and media playback state.",
+      "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "name": "read_clipboard",
+      "tier": 1, "connector": "clipboard", "label": "Read what you last copied",
+      "description": "Return the current text contents of the clipboard (truncated to 2000 chars).",
+      "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "name": "find_document",
+      "tier": 1, "connector": "files", "label": "Find a file by name or content",
+      "description": "Find files on this PC by what they CONTAIN or are named, using the Windows Search index — use this for 'find the document about X', 'the letter I wrote last month', and similar. Returns up to 8 matches (name, date modified, full path), best match first. Searches only what Windows has already indexed; nothing leaves the machine.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "the distinguishing words to look for in file contents and names — plain terms only, no operators or punctuation" },
+          "kind": { "enum": ["document", "picture", "music", "video", "email", "folder"], "description": "optional: restrict to one kind of item" },
+          "since": { "type": "string", "description": "optional: only items modified on or after this date, as YYYY-MM-DD" }
+        },
+        "required": ["query"], "additionalProperties": false
+      }
+    },
+    {
+      "name": "search_email",
+      "tier": 1, "connector": "email", "label": "Search your inbox for a message",
+      "description": "Search the mail in the desktop Outlook inbox and return matching HEADERS only — sender, date received, subject — up to 8, newest first. Use for 'the email from Sarah about the lease', 'what did X send me last week'. Every parameter is optional and they are combined with AND; give only the ones the request actually implies. Bodies are searched but never returned, and nothing is opened, replied to or sent.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sender": { "type": "string", "description": "optional: part of the sender's name or email address" },
+          "subject": { "type": "string", "description": "optional: words appearing in the subject line" },
+          "query": { "type": "string", "description": "optional: free text — each word must appear in the subject or the body" },
+          "since": { "type": "string", "description": "optional: only mail received on or after this date, as YYYY-MM-DD" },
+          "before": { "type": "string", "description": "optional: only mail received before this date, as YYYY-MM-DD" }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "open_app",
+      "tier": 2, "connector": "apps_media", "label": "Open an app",
+      "description": "Launch an application by the name a person would say for it (e.g. 'spotify', 'word', 'notepad'). Resolved against the apps this PC actually has; if the name matches nothing, the closest installed names come back so you can offer them instead of guessing again.",
+      "parameters": {
+        "type": "object",
+        "properties": { "app": { "type": "string", "description": "what the app is called, in plain words — never a path or a command line" } },
+        "required": ["app"], "additionalProperties": false
+      }
+    },
+    {
+      "name": "focus_window",
+      "tier": 2, "connector": "apps_media", "label": "Bring a window to the front",
+      "description": "Bring an already-open window to the front. Matches against the titles of the windows open right now; if none matches, the closest open titles come back. Use this to switch to something running — use open_app to start something that is not.",
+      "parameters": {
+        "type": "object",
+        "properties": { "title_query": { "type": "string", "description": "a distinctive word or two from the window's title, or the app's name" } },
+        "required": ["title_query"], "additionalProperties": false
+      }
+    },
+    {
+      "name": "media_control",
+      "tier": 2, "connector": "apps_media", "label": "Press the media and volume keys",
+      "description": "Send a media key: play/pause, next, previous, volume_up, volume_down, mute_toggle.",
+      "parameters": {
+        "type": "object",
+        "properties": { "action": { "enum": ["play_pause", "next", "previous", "volume_up", "volume_down", "mute_toggle"] } },
+        "required": ["action"], "additionalProperties": false
+      }
+    },
+    {
+      "name": "set_timer",
+      "tier": 2, "connector": "apps_media", "label": "Set a timer",
+      "description": "Set a named countdown timer; the bridge plays the 'timer' earcon and speaks the name when it fires.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "seconds": { "type": "integer", "minimum": 5, "maximum": 86400 },
+          "name": { "type": "string", "default": "timer" }
+        },
+        "required": ["seconds"], "additionalProperties": false
+      }
+    }
+  ]
+}

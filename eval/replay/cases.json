@@ -1,0 +1,45 @@
+{
+  "$comment": "Replay cases (docs/04 §7). Text only — the WAVs are Thomas's voice, recorded with `python -m eval.replay --record <name>` into eval/replay/wav/ (gitignored; copy the folder to the Mac by hand). Every real-world misfire later becomes a new case here. `trigger` names the door (D20): 'key' = the ask hotkey — recording starts and STOPS on a real keypress, so the clip IS the capture window and its end IS the endpoint. The harness still understands 'wake' and 'none'; no case uses them today (see $parked).",
+  "$parked": "The wake-word cases (wake_short, ambient, wake_barge) were REMOVED 2026-07-22 (Thomas), not merely disabled. Reason: D23 makes 'listen for me' default OFF, and off means no wake word AND no barge-in — they are one species, an always-on mic. All three tested that opt-in config, including ambient: a false-accept test is meaningless when nothing is listening. Rather than keep tests for a switch that is not built, the regression story for the always-on-mic path gets designed WITH the switch. Barge-in returns as a WAKE case when it does — it needs speech after the turn's endpoint, which a keyed clip cannot contain (the clip stops at the keypress). Recover the old definitions from git history.",
+  "cases": [
+    {
+      "name": "key_short",
+      "file": "key_short.wav",
+      "trigger": "key",
+      "seconds": 12,
+      "script": "TAP ctrl+alt+1, say: 'what time is it in Tokyo?', then TAP ctrl+alt+1 again.",
+      "transcripts": ["what time is it in Tokyo?"],
+      "model_reply": "It is early evening in Tokyo right now.",
+      "expect_events": ["speak"]
+    },
+    {
+      "name": "key_long_pause",
+      "file": "key_long_pause.wav",
+      "trigger": "key",
+      "seconds": 25,
+      "script": "TAP ctrl+alt+1, then say: 'I am planning a trip to Japan next spring' — PAUSE DELIBERATELY, two or three full seconds — then finish: 'and I want to know whether April is a good month to see the cherry blossoms.' Then TAP ctrl+alt+1 again. The long pause is the point: the 1 s VAD silence cut would end this turn, and the key endpoint must not let it.",
+      "transcripts": ["I am planning a trip to Japan next spring and I want to know whether April is a good month to see the cherry blossoms."],
+      "model_reply": "April is usually past peak bloom in Tokyo; late March is safer.",
+      "expect_events": ["speak"]
+    },
+    {
+      "name": "key_hold",
+      "file": "key_hold.wav",
+      "trigger": "key",
+      "seconds": 15,
+      "script": "HOLD ctrl+alt+1 DOWN for the whole utterance — say: 'what is the capital of Australia?' — then RELEASE. Push-to-talk: the release is the endpoint, not a second tap.",
+      "transcripts": ["what is the capital of Australia?"],
+      "model_reply": "Canberra, not Sydney.",
+      "expect_events": ["speak"]
+    },
+    {
+      "name": "key_silence",
+      "file": "key_silence.wav",
+      "trigger": "key",
+      "seconds": 12,
+      "script": "TAP ctrl+alt+1, stay completely silent for several seconds, then TAP ctrl+alt+1 again.",
+      "transcripts": [],
+      "expect_events": ["nothing-heard"]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# Secrets — the API key lives in the OS credential store (spec/50), never a file.
+# .env is ignored only as a guardrail against accidents.
+.env
+
+# Local Claude Code settings (per-machine, not shared)
+.claude/settings.local.json
+
+# Replay fixtures are Thomas's voice — kept out of the (private) remote by choice;
+# copied to the Mac clone by hand. cases.json (text) IS committed.
+eval/replay/wav/
+
+# Scratch space for throwaway mockups/experiments — never committed.
+sandbox/
+
+# Staging area for things on their way out (and side-project notes that never belonged
+# here). Untracked 2026-07-27; the directory itself is yours to delete when you're ready.
+_to_delete/
+
+# Local logs (spec/50: transcripts land here; delete the folder to purge in one action)
+logs/
+
+# Working notes — the spec, the roadmap, the build log. Local only: they are drafting
+# material, not documentation, and not for public consumption.
+spec/
+
+# Obsidian vault config: personal editor layout, plus vendored third-party themes.
+.obsidian/

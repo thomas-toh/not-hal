@@ -1,0 +1,7 @@
+module frontend
+singleton Theme 1.0 Theme.qml
+Glyph 1.0 Glyph.qml
+PeekPanel 1.0 PeekPanel.qml
+KeyRecorder 1.0 KeyRecorder.qml
+ThemedScrollBar 1.0 ThemedScrollBar.qml
+Spinner 1.0 Spinner.qml

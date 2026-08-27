@@ -1,0 +1,6 @@
+{
+  "$comment": "Audio format constants — SINGLE SOURCE OF TRUTH for the pipeline's sample rates. Loaded at runtime (hard rule 3): backend/audio/wake.py reads inbound, backend/audio/speak.py reads outbound. inbound = mic capture feeding wake/VAD/STT; outbound = TTS + earcons out. These lived in messages.schema.json (Contract H) until the headset was excised (spec/00 D18) — they are the bridge's, not a device protocol's.",
+  "version": "1.0.0",
+  "inbound":  { "sampleRateHz": 16000, "bitDepth": 16, "channels": 1, "encoding": "PCM S16LE" },
+  "outbound": { "sampleRateHz": 24000, "bitDepth": 16, "channels": 1, "encoding": "PCM S16LE" }
+}

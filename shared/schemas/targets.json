@@ -1,0 +1,44 @@
+{
+  "$id": "nothal/targets",
+  "title": "Latency targets & acceptance criteria",
+  "version": "1.0.0",
+  "description": "The single source for not-hal's per-turn latency numbers (spec/40 § Latency, spec/00 D25, hard rule 3). Loaded by the overlay's latency readout (frontend/decode.py -> Overlay.qml) and the orchestrator's latency table, so the numbers live in ONE place instead of the four they had drifted across. Each target has a 'ms' value, a 'kind', and a 'clock' describing exactly what is measured. Clock zero for the response metrics is 'end of speech' = the moment VAD DECLARES the turn over (spec/40); the 1 s silence timer runs before that and is a turn-taking cost, not part of any budget here.",
+  "$comment": "kind: 'floor' = a sub-second responsiveness acknowledgement (did it hear me / did it stop) — pass/fail, and a real product requirement independent of the screen. 'gate' = a pass/fail feedback guarantee. 'measured' = recorded per turn as a diagnostic and shown neutrally, NEVER pass/fail — the overlay must not flag it as over-budget. See D25 for why first_word is 'measured': under generate-then-play first-word latency scales with reply length (~45 ms/token measured), so it is a reply-length proxy, not a latency the system can tighten; and since D23 the streaming text on the island, not the first spoken word, is the first feedback anyway.",
+  "targets": {
+    "wake_ack": {
+      "ms": 300,
+      "kind": "floor",
+      "clock": "wake detected -> 'listening' earcon"
+    },
+    "press_ack": {
+      "ms": 300,
+      "kind": "floor",
+      "clock": "ask-hotkey press -> listening indication (overlay + earcon)"
+    },
+    "feedback": {
+      "ms": 1500,
+      "kind": "gate",
+      "clock": "end of speech -> first PERCEPTIBLE feedback: the overlay's state change to THINKING, the 'working' earcon, or the first spoken word — whichever lands first (D16). Since D23 the screen is the primary surface, so on a normal turn this is the near-instant flip to THINKING; the 'working' earcon (fired just before the deadline) is the speech-mode audio fallback."
+    },
+    "first_word": {
+      "ms": 4000,
+      "kind": "measured",
+      "clock": "end of speech -> first spoken word (B1). Recorded, not pass/fail (D25)."
+    },
+    "first_word_b2": {
+      "ms": 5000,
+      "kind": "measured",
+      "clock": "end of speech -> first spoken word (B2, local). Recorded, not pass/fail (D25)."
+    },
+    "tool_ack": {
+      "ms": 1500,
+      "kind": "gate",
+      "clock": "end of speech -> Tier-2 starter-tool action executed (M1, unbuilt)"
+    },
+    "barge_stop": {
+      "ms": 250,
+      "kind": "floor",
+      "clock": "barge-in (or ask-key interrupt) -> TTS stopped"
+    }
+  }
+}
